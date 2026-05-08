@@ -1,0 +1,38 @@
+.DS_Store
+
+# Secrets and local env
+.env
+.env.*
+!.env.example
+
+# Local runtime and generated artifacts
+.artifacts/
+.careeros/
+.careeros-data/
+.dev/
+.tmp/
+coverage/
+
+# JS/Next
+node_modules/
+.next/
+out/
+tsconfig.tsbuildinfo
+
+# .NET
+bin/
+obj/
+TestResults/
+
+# IDE
+.idea/
+.vscode/
+
+# Data exports
+*.sqlite
+*.db
+*.dump
+*.bak
+*.backup
+*.csv
+*.tsv

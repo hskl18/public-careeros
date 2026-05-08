@@ -1,0 +1,58 @@
+name: Public package checks
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  safety:
+    name: Safety scan and local runtime checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Run public safety check
+        run: bash scripts/public-safety-check.sh
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Type check
+        run: npm run check
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: Verify docs links are local or public
+        run: |
+          if grep -RInE '/Users/ice|console\\.neon\\.tech|railway\\.app/project|vercel\\.com/.+/.+' . \
+            --exclude-dir=.git \
+            --exclude-dir=node_modules \
+            --exclude-dir=.next \
+            --exclude-dir=.careeros-data \
+            --exclude-dir=.artifacts \
+            --exclude=public-ci.yml \
+            --exclude=public-safety-check.sh; then
+            exit 1
+          fi
