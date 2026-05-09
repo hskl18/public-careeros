@@ -78,8 +78,8 @@ if [ "${USE_DOCKER:-0}" = "1" ] || [ "${MODE:-local}" = "docker" ]; then
   exit $?
 fi
 
-if ! command -v npm >/dev/null 2>&1; then
-  log "npm is required."
+if ! command -v pnpm >/dev/null 2>&1; then
+  log "pnpm is required."
   exit 1
 fi
 
@@ -87,15 +87,15 @@ check_port_available "$PORT"
 
 if [ ! -d node_modules ]; then
   log "Installing dependencies..."
-  npm install
+  pnpm install
 fi
 
 log "Seeding local data..."
-npm run seed >/dev/null
+pnpm seed >/dev/null
 
 log "Starting CareerOS local dashboard..."
 (
-  npm run dev -- --hostname "$DEV_HOST" --port "$PORT" 2>&1 | sed -u "s/^/[web] /"
+  pnpm dev --hostname "$DEV_HOST" --port "$PORT" 2>&1 | sed -u "s/^/[web] /"
 ) &
 APP_PID=$!
 

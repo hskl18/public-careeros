@@ -1,30 +1,73 @@
-import { stableId, nowIso } from "./id";
-import type { Application, ApplicationEvent, CareerOSState, ProposedMutation, ReviewItem } from "./types";
+import { nowIso } from "./id";
+import type { Application, CareerOSState, ProposedMutation, ReviewItem } from "./types";
+import {
+  applyProposedMutation,
+  buildDecisionEvent,
+  canCreateApplication,
+  ensureReminder,
+  matchOrCreateApplication
+} from "./workflow";
 
-function applyProposedMutation(application: Application, change: ProposedMutation, source: Application["source"]): Application {
-  return {
-    ...application,
-    company: change.company ?? application.company,
-    role: change.role ?? application.role,
-    stage: change.stage ?? application.stage,
-    contactName: change.contactName ?? application.contactName,
-    deadlineAt: change.deadlineAt ?? application.deadlineAt,
-    followUpAt: change.followUpAt ?? application.followUpAt,
-    updatedAt: nowIso(),
-    source
-  };
+function resolveReviewApplication(state: CareerOSState, change: ProposedMutation) {
+  const match = matchOrCreateApplication(
+    state,
+    {
+      applicationId: change.applicationId,
+      company: change.company ?? "",
+      role: change.role ?? ""
+    },
+    change.stage,
+    canCreateApplication(change.company)
+  );
+  return match;
 }
 
-function buildDecisionEvent(review: ReviewItem, summary: string, confidence: number): ApplicationEvent | undefined {
-  if (!review.proposedChange.applicationId) return undefined;
+function applyReviewedChange(
+  state: CareerOSState,
+  review: ReviewItem,
+  change: ProposedMutation,
+  status: "accepted" | "corrected",
+  confidence: number
+): CareerOSState {
+  const match = resolveReviewApplication(state, change);
+  const application = match.application;
+  if (!application) {
+    return state;
+  }
+
+  const event = buildDecisionEvent(
+    application.id,
+    [review.id, status, change.eventSummary],
+    status === "accepted" ? "review_accepted" : "review_corrected",
+    `${status === "accepted" ? "Accepted" : "Corrected"} review: ${change.eventSummary}`,
+    "review",
+    confidence
+  );
+  const revisedChange = { ...change, applicationId: application.id };
+  const applications = match.applications.map((item: Application) =>
+    item.id === application.id ? applyProposedMutation(application, revisedChange, "review") : item
+  );
+  const updatedApplication = applications.find((item) => item.id === application.id) ?? application;
+
   return {
-    id: stableId("event", [review.id, summary]),
-    applicationId: review.proposedChange.applicationId,
-    type: "review_decision",
-    summary,
-    source: "review",
-    confidence,
-    createdAt: nowIso()
+    ...state,
+    applications,
+    reminders: ensureReminder(state.reminders, updatedApplication, revisedChange),
+    events: event && !state.events.some((item) => item.id === event.id) ? [event, ...state.events] : state.events,
+    reviewItems: state.reviewItems.map((item) =>
+      item.id === review.id
+        ? {
+            ...review,
+            proposedChange: revisedChange,
+            status,
+            confidence,
+            traceSummary:
+              status === "corrected" ? `${item.traceSummary}; user correction trusted` : `${item.traceSummary}; user accepted`,
+            decidedAt: nowIso(),
+            decisionEventId: event?.id
+          }
+        : item
+    )
   };
 }
 
@@ -32,30 +75,21 @@ export function acceptReviewItem(state: CareerOSState, reviewId: string): Career
   const review = state.reviewItems.find((item) => item.id === reviewId);
   if (!review || review.status !== "open") return state;
 
-  const event = buildDecisionEvent(review, `Accepted review: ${review.proposedChange.eventSummary}`, review.confidence);
-  const applications = state.applications.map((application) =>
-    application.id === review.proposedChange.applicationId
-      ? applyProposedMutation(application, review.proposedChange, "review")
-      : application
-  );
-
-  return {
-    ...state,
-    applications,
-    events: event && !state.events.some((item) => item.id === event.id) ? [event, ...state.events] : state.events,
-    reviewItems: state.reviewItems.map((item) =>
-      item.id === reviewId
-        ? { ...item, status: "accepted", decidedAt: nowIso(), decisionEventId: event?.id }
-        : item
-    )
-  };
+  return applyReviewedChange(state, review, review.proposedChange, "accepted", review.confidence);
 }
 
 export function dismissReviewItem(state: CareerOSState, reviewId: string): CareerOSState {
   const review = state.reviewItems.find((item) => item.id === reviewId);
   if (!review || review.status !== "open") return state;
 
-  const event = buildDecisionEvent(review, `Dismissed review without applying mutation: ${review.reason}`, review.confidence);
+  const event = buildDecisionEvent(
+    review.proposedChange.applicationId,
+    [review.id, "dismiss", review.reason],
+    "review_dismissed",
+    `Dismissed review without applying mutation: ${review.reason}`,
+    "review",
+    review.confidence
+  );
   return {
     ...state,
     events: event && !state.events.some((item) => item.id === event.id) ? [event, ...state.events] : state.events,
@@ -76,30 +110,36 @@ export function correctReviewItem(
   if (!review || review.status !== "open") return state;
 
   const mergedChange = { ...review.proposedChange, ...correctedChange };
-  const correctedReview = {
-    ...review,
-    proposedChange: mergedChange
-  };
-  const event = buildDecisionEvent(correctedReview, `Corrected review: ${mergedChange.eventSummary}`, 1);
-  const applications = state.applications.map((application) =>
-    application.id === mergedChange.applicationId ? applyProposedMutation(application, mergedChange, "review") : application
+  return applyReviewedChange(state, review, mergedChange, "corrected", 1);
+}
+
+export function updateReminderStatus(
+  state: CareerOSState,
+  reminderId: string,
+  status: "done" | "dismissed"
+): CareerOSState {
+  const reminder = state.reminders.find((item) => item.id === reminderId);
+  if (!reminder || reminder.status !== "open") return state;
+
+  const application = state.applications.find((item) => item.id === reminder.applicationId);
+  const now = nowIso();
+  const event = buildDecisionEvent(
+    reminder.applicationId,
+    [reminder.id, status],
+    status === "done" ? "reminder_completed" : "reminder_dismissed",
+    `${status === "done" ? "Completed" : "Dismissed"} reminder: ${reminder.title}`,
+    "manual",
+    1
   );
 
   return {
     ...state,
-    applications,
-    events: event && !state.events.some((item) => item.id === event.id) ? [event, ...state.events] : state.events,
-    reviewItems: state.reviewItems.map((item) =>
-      item.id === reviewId
-        ? {
-            ...correctedReview,
-            status: "corrected",
-            confidence: 1,
-            traceSummary: `${item.traceSummary}; user correction trusted`,
-            decidedAt: nowIso(),
-            decisionEventId: event?.id
-          }
-        : item
-    )
+    applications: application
+      ? state.applications.map((item) => (item.id === application.id ? { ...item, updatedAt: now } : item))
+      : state.applications,
+    reminders: state.reminders.map((item) =>
+      item.id === reminderId ? { ...item, status, decidedAt: now } : item
+    ),
+    events: event && !state.events.some((item) => item.id === event.id) ? [event, ...state.events] : state.events
   };
 }

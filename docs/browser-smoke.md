@@ -4,13 +4,19 @@ Scope: local CareerOS product dashboard after frontend polish.
 
 ## Commands
 
-- `npm run check`: passed.
-- `npm test`: passed.
-- `npm run build`: passed.
+- `pnpm check`: passed.
+- `pnpm test`: passed.
+- `pnpm build`: passed.
 - `./scripts/dev-up.sh`: passed after build, seeded demo data and served on `http://localhost:3000`.
 - `./scripts/dev-down.sh`: run after smoke to stop the local stack.
+- Windows PowerShell fallback: `pnpm install`, `pnpm seed`, then
+  `pnpm dev --hostname 127.0.0.1 --port 3000`; verified locally on
+  2026-05-08 because this environment routed `bash` to WSL without `/bin/bash`.
 
-Note: `next build` rewrites `.next`; if `next dev` is already running, restart with `./scripts/dev-down.sh` then `./scripts/dev-up.sh` before browser smoke.
+Note: `next build` rewrites `.next`; if `next dev` is already running, restart
+with `./scripts/dev-down.sh` then `./scripts/dev-up.sh` before browser smoke, or
+stop/restart the PowerShell fallback dev server with `Ctrl+C` and
+`pnpm dev --hostname 127.0.0.1 --port 3000`.
 
 ## Routes
 

@@ -16,6 +16,7 @@ The public repo should be useful to judges and technical reviewers:
 
 - explain what the product does
 - explain the CareerOS versus Other Candidate naming boundary
+- preserve the core product design, API, and roadmap story from the private repo
 - show how Gemma is used
 - document the architecture and trust boundaries
 - include enough source or source excerpts to prove the implementation is real
@@ -44,6 +45,8 @@ Current public package:
 - runnable Next.js local dashboard with route-handler APIs
 - local SQLite state adapter with seeded demo data and JSON fallback
 - deterministic import, review, resume, notification, and model-status logic
+- product design, API spec, and roadmap docs adapted for the provider-free
+  public runtime
 - selected source excerpts copied under `source/`
 - public safety scan available at `scripts/public-safety-check.sh`
 - secret/data scan passed locally on 2026-05-08

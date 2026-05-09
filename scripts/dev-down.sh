@@ -77,7 +77,7 @@ should_stop_port_process() {
   command_line="$(ps -p "$pid" -o command= 2>/dev/null || true)"
 
   case "$command_line" in
-    *"$ROOT_DIR"* | *"next dev"* | *"next-server"* | *"npm run dev"*)
+    *"$ROOT_DIR"* | *"next dev"* | *"next-server"* | *"pnpm dev"* | *"npm run dev"*)
       return 0
       ;;
   esac
@@ -100,7 +100,7 @@ stop_related_parent_process() {
 
   parent_command="$(ps -p "$parent_pid" -o command= 2>/dev/null || true)"
   case "$parent_command" in
-    *"$ROOT_DIR"* | *"npm run dev"* | *"next dev"* | *"./scripts/dev-up.sh"*)
+    *"$ROOT_DIR"* | *"pnpm dev"* | *"npm run dev"* | *"next dev"* | *"./scripts/dev-up.sh"*)
       stop_related_parent_process "$parent_pid"
       stop_pid "$parent_pid" "parent process for PID $pid"
       ;;

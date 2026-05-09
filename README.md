@@ -25,6 +25,7 @@ Include:
 
 - product README and setup notes
 - architecture and runtime diagrams in markdown
+- product design, API surface, and roadmap docs
 - Gemma usage explanation and judge demo flow
 - safe `.env.example` with variable names only
 - security and privacy notes
@@ -67,11 +68,23 @@ PORT=3001 ./scripts/dev-up.sh
 CAREEROS_DEV_HOST=127.0.0.1 ./scripts/dev-up.sh
 ```
 
+On Windows without Git Bash or WSL Bash, use the equivalent PowerShell path:
+
+```powershell
+pnpm dev:up:ps
+```
+
+Then open `http://127.0.0.1:3000`. Stop it with:
+
+```powershell
+pnpm dev:down:ps
+```
+
 The first request seeds local demo data into `.careeros-data/careeros.sqlite`. You
 can also reset it explicitly:
 
 ```bash
-npm run seed
+pnpm seed
 ```
 
 Docker is available for the same provider-free path:
@@ -164,13 +177,13 @@ The SQLite adapter initializes its table on first access and stores the current
 inspectable CareerOS state snapshot. Reset local seed data with:
 
 ```bash
-npm run seed
+pnpm seed
 ```
 
 For JSON fallback:
 
 ```bash
-CAREEROS_PERSISTENCE=json npm run dev
+CAREEROS_PERSISTENCE=json pnpm dev
 ```
 
 That writes `.careeros-data/state.json`.
@@ -201,9 +214,10 @@ intelligence, and admin diagnostics.
 ## Public Release Checklist
 
 1. Run `bash scripts/public-safety-check.sh`.
-2. Run `npm run check`, `npm test`, and `npm run build`.
-3. Start `./scripts/dev-up.sh` and smoke `/`, `/applications`, `/review`, `/resume`,
-   `/notifications`, and `/settings` with Ollama disabled.
+2. Run `pnpm check`, `pnpm test`, and `pnpm build`.
+3. Start `./scripts/dev-up.sh`, or use the PowerShell commands above on Windows,
+   and smoke `/`, `/applications`, `/review`, `/resume`, `/notifications`, and
+   `/settings` with Ollama disabled.
 4. Confirm every screenshot and fixture is sanitized.
 5. Keep hosted Other Candidate deployment details out of the public base.
 
@@ -211,6 +225,9 @@ intelligence, and admin diagnostics.
 
 - [Public repo scope](docs/public-repo-scope.md)
 - [Architecture summary](docs/architecture.md)
+- [Product design](docs/design.md)
+- [API spec](docs/api-spec.md)
+- [Roadmap](docs/roadmap.md)
 - [Local-first product plan](docs/local-first-product-plan.md)
 - [Logic implementation prompt](docs/logic-implementation-prompt.md)
 - [Frontend implementation prompt](docs/frontend-implementation-prompt.md)

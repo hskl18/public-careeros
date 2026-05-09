@@ -94,6 +94,7 @@ export function createSeedState(): CareerOSState {
       {
         id: "reminder_atlas_follow_up",
         applicationId: atlasId,
+        type: "follow_up",
         title: "Send interview follow-up",
         dueAt: "2026-05-11T16:00:00.000Z",
         status: "open",
@@ -102,6 +103,7 @@ export function createSeedState(): CareerOSState {
       {
         id: "reminder_northstar_follow_up",
         applicationId: northstarId,
+        type: "follow_up",
         title: "Check for recruiter response",
         dueAt: "2026-05-13T16:00:00.000Z",
         status: "open",

@@ -90,10 +90,12 @@ export interface ReviewItem {
 export interface Reminder {
   id: string;
   applicationId: string;
+  type?: "follow_up" | "assessment_deadline" | "interview_preparation";
   title: string;
   dueAt: string;
-  status: "open" | "done";
+  status: "open" | "done" | "dismissed";
   createdAt: string;
+  decidedAt?: string;
 }
 
 export interface Notification {

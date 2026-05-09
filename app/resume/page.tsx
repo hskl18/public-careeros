@@ -1,6 +1,8 @@
-import { readState } from "@/lib/store";
+import { readServerState } from "@/lib/server-state";
 
 export const dynamic = "force-dynamic";
+
+const RESUME_EVALUATION_LIMIT = 20;
 
 function dateLabel(value: string) {
   return new Intl.DateTimeFormat("en", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(
@@ -9,14 +11,15 @@ function dateLabel(value: string) {
 }
 
 export default async function ResumePage() {
-  const state = await readState();
+  const state = await readServerState();
   const completed = state.resumeEvaluations.filter((item) => item.status === "completed");
   const blocked = state.resumeEvaluations.filter((item) => item.status === "blocked_by_review");
   const latestDocument = state.resumeDocuments[0];
   const latestEvaluation = state.resumeEvaluations.find((item) => item.resumeDocumentId === latestDocument?.id);
+  const visibleEvaluations = state.resumeEvaluations.slice(0, RESUME_EVALUATION_LIMIT);
 
   return (
-    <div className="page">
+    <div className="page resume-page">
       <header className="page-header">
         <div>
           <p className="eyebrow">Resume</p>
@@ -98,12 +101,18 @@ export default async function ResumePage() {
         <div className="section-title">
           <div>
             <h2>Resume evaluations</h2>
-            <p className="subtle">Newest evaluations first, with deterministic confidence and correction guidance.</p>
+            <p className="subtle">
+              Showing {visibleEvaluations.length} of {state.resumeEvaluations.length}. Newest evaluations first, with
+              deterministic confidence and correction guidance.
+            </p>
           </div>
+          {state.resumeEvaluations.length > visibleEvaluations.length ? (
+            <span className="badge info">+{state.resumeEvaluations.length - visibleEvaluations.length} older</span>
+          ) : null}
         </div>
         {state.resumeEvaluations.length ? (
           <div className="list">
-            {state.resumeEvaluations.map((evaluation) => {
+            {visibleEvaluations.map((evaluation) => {
               const resume = state.resumeDocuments.find((item) => item.id === evaluation.resumeDocumentId);
               return (
                 <article className="card" key={evaluation.id}>

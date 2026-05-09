@@ -8,14 +8,16 @@ import {
   startGmailConnectPlaceholder,
   syncGmailPlaceholder
 } from "@/lib/connectors";
+import { deriveAnalyticsSummary } from "@/lib/analytics";
 import { checkOllamaStatus } from "@/lib/model-status";
 import { deriveNotifications } from "@/lib/notifications";
 import { MemoryStateRepository, SQLiteStateRepository } from "@/lib/persistence";
 import { processLocalImport, processLocalImportWithModel } from "@/lib/pipeline";
-import { acceptReviewItem, dismissReviewItem } from "@/lib/review";
+import { acceptReviewItem, correctReviewItem, dismissReviewItem, updateReminderStatus } from "@/lib/review";
 import { createSeedState } from "@/lib/seed";
 import { readState, resetState, setStateRepository, updateState } from "@/lib/store";
 import type { CareerOSState } from "@/lib/types";
+import { POST as postReminder } from "@/app/api/reminders/[id]/route";
 
 function restoreEnv(name: string, value: string | undefined) {
   if (value === undefined) {
@@ -58,6 +60,78 @@ describe("local deterministic pipeline", () => {
     expect(after?.deadlineAt).toBe(before?.deadlineAt);
     expect(next.reviewItems.some((item) => item.sourceLabel === "test:ambiguous-deadline" && item.status === "open")).toBe(true);
   });
+
+  it("defers new application creation when the proposed mutation is review-gated", () => {
+    const state = createSeedState();
+    const next = processLocalImport(state, [
+      {
+        company: "Offerful Labs",
+        role: "Backend Engineer",
+        sourceLabel: "test:new-offer-review",
+        text: "Recruiter says an offer may be coming, but the details are unclear."
+      }
+    ]);
+
+    const review = next.reviewItems.find((item) => item.sourceLabel === "test:new-offer-review");
+    expect(next.applications.some((item) => item.company === "Offerful Labs")).toBe(false);
+    expect(review?.proposedChange.applicationId).toBeUndefined();
+  });
+
+  it("keeps distinct evidence when long records share the same clipped prefix", () => {
+    const prefix = "Recruiter reply detected. ".repeat(20);
+    const state = createSeedState();
+    const next = processLocalImport(state, [
+      {
+        company: "Prefix Labs",
+        role: "Backend Engineer",
+        sourceLabel: "test:long-prefix",
+        text: `${prefix}Tail A follow-up due on 2026-05-12.`
+      },
+      {
+        company: "Prefix Labs",
+        role: "Backend Engineer",
+        sourceLabel: "test:long-prefix",
+        text: `${prefix}Tail B follow-up due on 2026-05-13.`
+      }
+    ]);
+
+    const evidence = next.evidenceSnippets.filter((item) => item.sourceLabel === "test:long-prefix");
+    expect(evidence).toHaveLength(2);
+    expect(new Set(evidence.map((item) => item.id)).size).toBe(2);
+  });
+
+  it("does not move an application backward on later lower-ranked recruiting signals", () => {
+    const state = createSeedState();
+    const next = processLocalImport(state, [
+      {
+        company: "Atlas Robotics",
+        role: "Product Engineer",
+        sourceLabel: "test:late-receipt",
+        text: "Application submitted and receipt confirmed on 2026-05-12."
+      }
+    ]);
+
+    const application = next.applications.find((item) => item.company === "Atlas Robotics");
+    expect(application?.stage).toBe("interview");
+    expect(next.events.some((event) => event.type === "application_received")).toBe(true);
+  });
+
+  it("adds a deduped reminder when a safe recruiter reply is applied", () => {
+    const state = createSeedState();
+    const next = processLocalImport(state, [
+      {
+        company: "Cedar Systems",
+        role: "Full Stack Engineer",
+        sourceLabel: "test:cedar-reminder",
+        text: "Recruiter reply detected and follow-up is due on 2026-05-12."
+      }
+    ]);
+
+    const application = next.applications.find((item) => item.company === "Cedar Systems");
+    const reminders = next.reminders.filter((item) => item.applicationId === application?.id && item.status === "open");
+    expect(reminders).toHaveLength(1);
+    expect(reminders[0]?.type).toBe("follow_up");
+  });
 });
 
 describe("review decisions", () => {
@@ -80,6 +154,76 @@ describe("review decisions", () => {
 
     expect(after?.deadlineAt).toBe(before?.deadlineAt);
     expect(next.reviewItems.find((item) => item.id === "review_deadline_conflict")?.status).toBe("dismissed");
+  });
+
+  it("does not close an unresolved review when accept cannot resolve an application", () => {
+    const state = processLocalImport(createSeedState(), [
+      {
+        company: "Unknown Company",
+        role: "Unknown Role",
+        sourceLabel: "test:accept-unresolved",
+        text: "Interview scheduling note, but the company and role are unclear."
+      }
+    ]);
+    const review = state.reviewItems.find((item) => item.sourceLabel === "test:accept-unresolved");
+    const next = acceptReviewItem(state, review?.id ?? "");
+
+    expect(next.reviewItems.find((item) => item.id === review?.id)?.status).toBe("open");
+    expect(next.events.length).toBe(state.events.length);
+  });
+
+  it("correct can create a deferred application and reminder through the same workflow rules", () => {
+    const state = processLocalImport(createSeedState(), [
+      {
+        company: "Unknown Company",
+        role: "Unknown Role",
+        sourceLabel: "test:unknown-company",
+        text: "Interview scheduling note, but the company and role are unclear."
+      }
+    ]);
+    const review = state.reviewItems.find((item) => item.sourceLabel === "test:unknown-company");
+    expect(review?.proposedChange.applicationId).toBeUndefined();
+
+    const next = correctReviewItem(state, review?.id ?? "", {
+      company: "Clearview Labs",
+      role: "Backend Engineer",
+      stage: "interview",
+      deadlineAt: "2026-05-20T16:00:00.000Z",
+      eventSummary: "User identified the company, role, and interview deadline."
+    });
+
+    const application = next.applications.find((item) => item.company === "Clearview Labs");
+    expect(application?.stage).toBe("interview");
+    expect(next.reminders.some((item) => item.applicationId === application?.id && item.type === "interview_preparation")).toBe(true);
+    expect(next.reviewItems.find((item) => item.id === review?.id)?.status).toBe("corrected");
+  });
+
+  it("updates reminder lifecycle idempotently and writes an event", () => {
+    const state = createSeedState();
+    const once = updateReminderStatus(state, "reminder_atlas_follow_up", "done");
+    const twice = updateReminderStatus(once, "reminder_atlas_follow_up", "dismissed");
+
+    expect(twice.reminders.find((item) => item.id === "reminder_atlas_follow_up")?.status).toBe("done");
+    expect(twice.events.filter((event) => event.type === "reminder_completed")).toHaveLength(1);
+  });
+});
+
+describe("analytics summary", () => {
+  it("derives local product metrics from application stages and events", () => {
+    const state = processLocalImport(createSeedState(), [
+      {
+        company: "Cedar Systems",
+        role: "Full Stack Engineer",
+        sourceLabel: "test:analytics-reply",
+        text: "Recruiter reply detected and follow-up is due on 2026-05-12."
+      }
+    ]);
+
+    const analytics = deriveAnalyticsSummary(state);
+    expect(analytics.metrics.applicationsCount).toBe(state.applications.length);
+    expect(analytics.metrics.uniqueCompanies).toBeGreaterThanOrEqual(3);
+    expect(analytics.metrics.replyRate).toBeGreaterThan(0);
+    expect(analytics.companyBreakdown.some((item) => item.label === "Cedar Systems")).toBe(true);
   });
 });
 
@@ -129,6 +273,53 @@ describe("notifications", () => {
     expect(notifications.some((item) => item.title === "Review item blocking automation")).toBe(true);
     expect(notifications.some((item) => item.title === "Model setup needs attention")).toBe(true);
     expect(notifications.some((item) => item.title === "Gmail connector needs attention")).toBe(true);
+  });
+
+  it("uses the latest model trace when deriving model setup notifications", () => {
+    const state: CareerOSState = {
+      ...createSeedState(),
+      modelTraces: [
+        {
+          id: "trace_ready",
+          provider: "ollama",
+          modelTag: "gemma3:4b",
+          status: "ready",
+          task: "model-provider-status",
+          diagnostic: "Ready now.",
+          createdAt: "2026-05-08T12:10:00.000Z"
+        },
+        {
+          id: "trace_missing",
+          provider: "ollama",
+          modelTag: "gemma3:4b",
+          status: "model_missing",
+          task: "model-provider-status",
+          diagnostic: "Missing earlier.",
+          createdAt: "2026-05-08T12:00:00.000Z"
+        }
+      ]
+    };
+
+    const notifications = deriveNotifications(state);
+    expect(notifications.some((item) => item.title === "Model setup needs attention")).toBe(false);
+  });
+});
+
+describe("reminder API", () => {
+  it("rejects unsupported reminder statuses", async () => {
+    setStateRepository(new MemoryStateRepository(createSeedState()));
+    const response = await postReminder(
+      new Request("http://localhost/api/reminders/reminder_atlas_follow_up", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ status: "don" })
+      }),
+      { params: Promise.resolve({ id: "reminder_atlas_follow_up" }) }
+    );
+    const state = await readState();
+
+    expect(response.status).toBe(400);
+    expect(state.reminders.find((item) => item.id === "reminder_atlas_follow_up")?.status).toBe("open");
   });
 });
 

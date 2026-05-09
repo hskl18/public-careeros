@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "description": "Local-first CareerOS job pipeline dashboard.",
   "license": "MIT",
+  "packageManager": "pnpm@10.19.0",
   "homepage": "https://github.com/hskl18/public-careeros#readme",
   "repository": {
     "type": "git",
@@ -17,13 +18,15 @@
   "scripts": {
     "dev:up": "bash scripts/dev-up.sh",
     "dev:down": "bash scripts/dev-down.sh",
+    "dev:up:ps": "powershell -ExecutionPolicy Bypass -File scripts/dev-up.ps1",
+    "dev:down:ps": "powershell -ExecutionPolicy Bypass -File scripts/dev-down.ps1",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "check": "tsc --noEmit",
     "test": "vitest run",
     "seed": "tsx scripts/seed-local.ts",
-    "ci": "bash scripts/public-safety-check.sh && npm run check && npm test && npm run build"
+    "ci": "bash scripts/public-safety-check.sh && pnpm check && pnpm test && pnpm build"
   },
   "dependencies": {
     "next": "^15.5.18",
@@ -34,9 +37,11 @@
     "postcss": "8.5.10"
   },
   "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.0",
     "@types/node": "22.15.30",
     "@types/react": "19.0.12",
     "@types/react-dom": "19.0.4",
+    "tailwindcss": "^4.3.0",
     "tsx": "4.19.4",
     "typescript": "5.8.3",
     "vitest": "3.2.2"

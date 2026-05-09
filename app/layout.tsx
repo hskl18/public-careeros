@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import "./globals.css";
-import { checkOllamaStatus } from "@/lib/model-status";
-import { readState } from "@/lib/store";
+import { BrandLogo } from "@/components/brand-logo";
+import { readServerState } from "@/lib/server-state";
 
 export const metadata: Metadata = {
   title: "CareerOS",
@@ -27,11 +27,18 @@ function severityBadgeClass(severity: string) {
 }
 
 export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  const [state, modelStatus] = await Promise.all([readState(), checkOllamaStatus()]);
+  const state = await readServerState();
   const connector = state.connectorAccounts.find((item) => item.provider === "gmail");
+  const latestModelTrace = state.modelTraces.find((item) => item.provider === "ollama");
   const unreadCount = state.notifications.filter((item) => item.status === "unread").length;
   const openReviewCount = state.reviewItems.filter((item) => item.status === "open").length;
   const connectorStatus = connector?.status ?? "disconnected";
+  const modelMode =
+    latestModelTrace?.status === "ready"
+      ? "Gemma ready"
+      : process.env.CAREEROS_OLLAMA_ENABLED === "true"
+        ? "Check settings"
+        : "Deterministic-only";
   const workspaceStatus = state.applications.length
     ? state.importJobs.some((item) => item.source === "seed")
       ? "Seeded demo data"
@@ -43,16 +50,17 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
       <body>
         <div className="app-shell">
           <aside className="sidebar">
-            <Link className="brand" href="/">
-              <span className="brand-mark">CO</span>
-              <span>
-                <strong>CareerOS</strong>
-                <small>Local workspace</small>
-              </span>
+            <Link className="brand flex min-h-11 items-center gap-3" href="/" prefetch={false}>
+              <BrandLogo />
             </Link>
             <nav>
               {navItems.map((item) => (
-                <Link key={item.href} href={item.href}>
+                <Link
+                  className="flex min-h-10 items-center rounded-full border border-transparent px-3.5 text-[13px] font-bold text-[var(--muted)] transition hover:-translate-y-px hover:border-[var(--line)] hover:bg-white/70 hover:text-[var(--ink)] max-[720px]:min-w-max max-[720px]:justify-center max-[720px]:px-3 max-[720px]:text-xs"
+                  key={item.href}
+                  href={item.href}
+                  prefetch={false}
+                >
                   {item.label}
                 </Link>
               ))}
@@ -64,14 +72,17 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
           </aside>
           <div className="main-column">
             <div className="status-strip">
-              <div className="status-items" aria-label="Local runtime status">
+              <div
+                className="status-items"
+                aria-label="Local runtime status"
+              >
                 <div className="status-chip">
                   <small>Workspace</small>
                   <strong>{workspaceStatus}</strong>
                 </div>
                 <div className="status-chip">
                   <small>Model mode</small>
-                  <strong>{modelStatus.status === "ready" ? "Gemma ready" : "Deterministic-only"}</strong>
+                  <strong>{modelMode}</strong>
                 </div>
                 <div className="status-chip">
                   <small>Gmail</small>
@@ -82,7 +93,11 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
                   <strong>{openReviewCount} blocking update{openReviewCount === 1 ? "" : "s"}</strong>
                 </div>
               </div>
-              <Link className={unreadCount > 0 ? severityBadgeClass("warning") : "badge ok"} href="/notifications">
+              <Link
+                className={`${unreadCount > 0 ? severityBadgeClass("warning") : "badge ok"} max-[720px]:flex-none`}
+                href="/notifications"
+                prefetch={false}
+              >
                 Notifications {unreadCount}
               </Link>
             </div>

@@ -11,6 +11,9 @@ Last updated: 2026-05-08
   - Reviewed excerpts live under `source/`; they are inspectable slices, not a
     standalone copy of the private monorepo.
 - [x] Replace private monorepo paths with public repo-relative paths.
+- [x] Adapt core private product docs for the public local-first package.
+  - Public docs now include product design, API spec, and roadmap pages without
+    private account, hosted provider, or personal inbox details.
 - [x] Keep `.env.example`; exclude all real `.env*` files.
 - [x] Run secret scan before publishing the public Git repository.
   - Local command passed: `bash scripts/public-safety-check.sh`.

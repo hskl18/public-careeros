@@ -1,7 +1,11 @@
 import Link from "next/link";
-import { readState } from "@/lib/store";
+import { readServerState } from "@/lib/server-state";
 
 export const dynamic = "force-dynamic";
+
+const OPEN_REVIEW_LIMIT = 20;
+const REVIEW_HISTORY_LIMIT = 50;
+const REVIEW_EVIDENCE_LIMIT = 3;
 
 function statusBadge(status: string) {
   if (status === "open") return "badge warn";
@@ -16,20 +20,29 @@ function dateLabel(value?: string) {
   );
 }
 
+function stageLabel(value?: string) {
+  return value ? value.replace("_", " ") : "unchanged";
+}
+
 export default async function ReviewPage() {
-  const state = await readState();
+  const state = await readServerState();
   const open = state.reviewItems.filter((item) => item.status === "open");
   const decided = state.reviewItems.filter((item) => item.status !== "open");
   const blockedApplications = new Set(open.map((item) => item.proposedChange.applicationId).filter(Boolean));
+  const modelBacked = state.reviewItems.filter((item) => item.traceSummary.toLowerCase().includes("model"));
+  const lowConfidence = open.filter((item) => item.confidence < 0.7);
+  const visibleOpen = open.slice(0, OPEN_REVIEW_LIMIT);
+  const visibleDecided = decided.slice(0, REVIEW_HISTORY_LIMIT);
 
   return (
-    <div className="page">
+    <div className="page review-page">
       <header className="page-header">
         <div>
-          <p className="eyebrow">Review queue</p>
-          <h1>Confirm uncertain updates</h1>
+          <p className="eyebrow">Manual review</p>
+          <h1>Review queue</h1>
           <p className="subtle">
-            Risky imports stop here until you accept, dismiss, or correct the proposed application mutation.
+            The review queue is the product safety boundary: imported evidence and model traces stay visible until the
+            user accepts, dismisses, or corrects the proposed update.
           </p>
         </div>
         <div className="header-stack">
@@ -40,46 +53,45 @@ export default async function ReviewPage() {
         </div>
       </header>
 
-      <section className="state-matrix">
-        <div className="state-cell">
-          <span className="label">Review item blocks update</span>
-          <strong>{blockedApplications.size ? "Active" : "Clear"}</strong>
-          <small>{blockedApplications.size || "No"} application records are held behind explicit confirmation.</small>
-        </div>
-        <div className="state-cell">
-          <span className="label">Accept</span>
-          <strong>Apply mutation</strong>
-          <small>Writes the proposed deadline, stage, or contact change and records a decision event.</small>
-        </div>
-        <div className="state-cell">
-          <span className="label">Dismiss</span>
-          <strong>Keep current data</strong>
-          <small>Closes the item without changing the owning application.</small>
-        </div>
-        <div className="state-cell">
-          <span className="label">Correct</span>
-          <strong>User wins</strong>
-          <small>Applies your corrected value with confidence pinned to 1.0.</small>
-        </div>
+      <section className="grid four">
+        {[
+          ["Open decisions", open.length, "Needs explicit user action"],
+          ["Blocked records", blockedApplications.size, "Applications held back"],
+          ["Low confidence", lowConfidence.length, "Below automation threshold"],
+          ["Model traces", modelBacked.length, "Review-visible model path"]
+        ].map(([label, value, detail]) => (
+          <article className="card metric compact-metric" key={label}>
+            <span className="eyebrow">{label}</span>
+            <strong>{value}</strong>
+            <span className="subtle">{detail}</span>
+          </article>
+        ))}
       </section>
 
       <section className="section">
         <div className="section-title">
           <div>
-            <h2>Open decisions</h2>
-            <p className="subtle">Evidence and model trace are preserved with every queued update.</p>
+            <p className="eyebrow">Decision inbox</p>
+            <h2>Open updates</h2>
+            <p className="subtle">
+              Showing {visibleOpen.length} of {open.length}. Evidence, confidence, trace metadata, and the proposed
+              mutation are kept in one review card.
+            </p>
           </div>
+          {open.length > visibleOpen.length ? <span className="badge info">+{open.length - visibleOpen.length} queued</span> : null}
         </div>
         {open.length ? (
-          <div className="list">
-            {open.map((review) => {
+          <div className="review-list">
+            {visibleOpen.map((review) => {
               const app = state.applications.find((item) => item.id === review.proposedChange.applicationId);
               const evidence = state.evidenceSnippets.filter((item) => review.evidenceSnippetIds.includes(item.id));
+              const visibleEvidence = evidence.slice(0, REVIEW_EVIDENCE_LIMIT);
               return (
-                <article className="card decision-card" id={review.id} key={review.id}>
-                  <div className="row split">
+                <article className="section review-card" id={review.id} key={review.id}>
+                  <div className="review-card-head">
                     <div>
-                      <h3>{review.sourceLabel}</h3>
+                      <p className="eyebrow">{review.sourceLabel}</p>
+                      <h2>{review.reason}</h2>
                       <p className="subtle">
                         {app ? (
                           <Link href={`/applications#${app.id}`}>
@@ -87,37 +99,73 @@ export default async function ReviewPage() {
                           </Link>
                         ) : (
                           "Unmatched application"
-                        )}{" "}
-                        · confidence {Math.round(review.confidence * 100)}%
+                        )}
                       </p>
                     </div>
-                    <span className={statusBadge(review.status)}>{review.status}</span>
+                    <div className="badge-group">
+                      <span className={statusBadge(review.status)}>{review.status}</span>
+                      <span className={review.confidence < 0.7 ? "badge warn" : "badge info"}>
+                        {Math.round(review.confidence * 100)}% confidence
+                      </span>
+                    </div>
                   </div>
 
-                  <div className="grid three compact">
-                    <div className="tile">
-                      <span className="label">Reason</span>
-                      <strong>{review.reason}</strong>
+                  <div className="grid four compact">
+                    <div className="state-cell">
+                      <span className="label">Current stage</span>
+                      <strong>{stageLabel(app?.stage)}</strong>
+                      <small>Current durable state</small>
                     </div>
-                    <div className="tile">
+                    <div className="state-cell">
+                      <span className="label">Proposed stage</span>
+                      <strong>{stageLabel(review.proposedChange.stage)}</strong>
+                      <small>Only applies after accept/correct</small>
+                    </div>
+                    <div className="state-cell">
                       <span className="label">Current deadline</span>
                       <strong>{dateLabel(app?.deadlineAt)}</strong>
+                      <small>Application record</small>
                     </div>
-                    <div className="tile">
+                    <div className="state-cell">
                       <span className="label">Proposed deadline</span>
                       <strong>{dateLabel(review.proposedChange.deadlineAt)}</strong>
+                      <small>Queued mutation</small>
                     </div>
                   </div>
 
-                  <div className="evidence-list">
-                    {evidence.map((item) => (
-                      <p className="subtle" key={item.id}>
-                        <strong>{item.sourceLabel}:</strong> {item.snippet}
-                      </p>
-                    ))}
+                  <div className="grid two review-detail-grid">
+                    <div>
+                      <p className="eyebrow">Evidence</p>
+                      <div className="list">
+                        {evidence.length ? (
+                          visibleEvidence.map((item) => (
+                            <div className="evidence-card" key={item.id}>
+                              <div className="inline-between">
+                                <strong>{item.sourceLabel}</strong>
+                                <span className="badge info">{Math.round(item.confidence * 100)}%</span>
+                              </div>
+                              <p className="subtle">{item.snippet}</p>
+                              <span className="label">hash {item.hash.slice(0, 12)}</span>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="empty-state">No snippet ids were attached to this review item.</div>
+                        )}
+                        {evidence.length > visibleEvidence.length ? (
+                          <div className="density-note">+{evidence.length - visibleEvidence.length} more evidence snippets.</div>
+                        ) : null}
+                      </div>
+                    </div>
+
+                    <div>
+                      <p className="eyebrow">Trace and mutation</p>
+                      <div className="trace-panel">
+                        <span className="badge info">{review.traceSummary}</span>
+                        <p className="subtle">{review.proposedChange.eventSummary}</p>
+                        <pre className="code">{JSON.stringify(review.proposedChange, null, 2)}</pre>
+                      </div>
+                    </div>
                   </div>
-                  <pre className="code">{JSON.stringify(review.proposedChange, null, 2)}</pre>
-                  <p className="subtle">Trace: {review.traceSummary}</p>
 
                   <div className="actions decision-actions">
                     <form action={`/api/review/${review.id}`} method="post">
@@ -152,7 +200,11 @@ export default async function ReviewPage() {
 
       <section className="section">
         <div className="section-title">
-          <h2>Decision history</h2>
+          <div>
+            <p className="eyebrow">Decision history</p>
+            <h2>Closed review items</h2>
+            <p className="subtle">Showing {visibleDecided.length} of {decided.length} recent decisions.</p>
+          </div>
           <span className="badge">{decided.length}</span>
         </div>
         {decided.length ? (
@@ -167,7 +219,7 @@ export default async function ReviewPage() {
                 </tr>
               </thead>
               <tbody>
-                {decided.map((review) => (
+                {visibleDecided.map((review) => (
                   <tr key={review.id}>
                     <td>{review.sourceLabel}</td>
                     <td>

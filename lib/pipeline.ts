@@ -2,7 +2,6 @@ import { hashText, newId, nowIso, stableId } from "./id";
 import { analyzeImportRecordWithModel } from "./model-analysis";
 import { checkOllamaStatus, modelStatusTrace, type ModelRuntimeOptions } from "./model-status";
 import type {
-  Application,
   ApplicationEvent,
   CareerOSState,
   EvidenceSnippet,
@@ -13,6 +12,14 @@ import type {
   ResumeEvaluation,
   ReviewItem
 } from "./types";
+import {
+  applyProposedMutation,
+  buildReviewDecision,
+  canCreateApplication,
+  ensureReminder,
+  matchOrCreateApplication,
+  resolveEventType
+} from "./workflow";
 
 function toStage(text: string): ProposedMutation["stage"] | undefined {
   const normalized = text.toLowerCase();
@@ -29,8 +36,9 @@ function confidenceFor(text: string) {
   const normalized = text.toLowerCase();
   let confidence = 0.45;
   if (/interview|assessment|offer|reject|deadline|follow[- ]?up|recruiter/.test(normalized)) confidence += 0.22;
+  if (/application|applied|submitted|receipt/.test(normalized)) confidence += 0.18;
   if (/\b\d{4}-\d{2}-\d{2}\b/.test(normalized)) confidence += 0.12;
-  if (/maybe|possibly|unclear|either|or /.test(normalized)) confidence -= 0.2;
+  if (/\b(?:maybe|possibly|unclear|either|or)\b/.test(normalized)) confidence -= 0.2;
   return Math.max(0.1, Math.min(0.98, Number(confidence.toFixed(2))));
 }
 
@@ -47,47 +55,16 @@ function isRiskyMutation(change: ProposedMutation) {
 
 function createEvidence(record: LocalImportRecord, applicationId?: string, reviewItemId?: string): EvidenceSnippet {
   const clipped = record.text.trim().slice(0, 360);
+  const hash = hashText(record.text);
   return {
-    id: stableId("evidence", [record.sourceLabel, clipped]),
+    id: stableId("evidence", [record.sourceLabel, hash]),
     applicationId,
     reviewItemId,
     sourceLabel: record.sourceLabel,
     snippet: clipped,
-    hash: hashText(record.text),
+    hash,
     confidence: confidenceFor(record.text),
     createdAt: nowIso()
-  };
-}
-
-function findOrCreateApplication(state: CareerOSState, record: LocalImportRecord): Application {
-  const existing = state.applications.find(
-    (application) =>
-      application.company.toLowerCase() === record.company.toLowerCase() &&
-      application.role.toLowerCase() === record.role.toLowerCase()
-  );
-
-  if (existing) return existing;
-
-  return {
-    id: stableId("app", [record.company, record.role]),
-    workspaceUserId: state.workspaceUser.id,
-    company: record.company,
-    role: record.role,
-    stage: "applied",
-    updatedAt: nowIso(),
-    source: "import"
-  };
-}
-
-function applyMutation(application: Application, change: ProposedMutation): Application {
-  return {
-    ...application,
-    stage: change.stage ?? application.stage,
-    contactName: change.contactName ?? application.contactName,
-    deadlineAt: change.deadlineAt ?? application.deadlineAt,
-    followUpAt: change.followUpAt ?? application.followUpAt,
-    updatedAt: nowIso(),
-    source: "import"
   };
 }
 
@@ -108,41 +85,55 @@ export function processLocalImport(state: CareerOSState, records: LocalImportRec
   };
 
   for (const record of records) {
-    const application = findOrCreateApplication(next, record);
     const confidence = confidenceFor(record.text);
     const stage = toStage(record.text);
+    const eventType = resolveEventType(stage);
     const date = extractIsoDate(record.text);
     const normalizedText = record.text.toLowerCase();
+    const match = matchOrCreateApplication(
+      next,
+      record,
+      stage,
+      canCreateApplication(record.company) && eventType !== "generic_update"
+    );
+    const application = match.application;
     const proposedChange: ProposedMutation = {
-      applicationId: application.id,
-      company: application.company,
-      role: application.role,
+      applicationId: application?.id,
+      company: application?.company ?? record.company,
+      role: application?.role ?? record.role,
       stage,
       deadlineAt: /deadline|assessment|interview/.test(normalizedText) ? date : undefined,
       followUpAt: normalizedText.includes("follow") ? date : undefined,
       eventSummary: `Imported ${record.sourceLabel}: ${record.text.trim().slice(0, 140)}`
     };
-    const needsReview = confidence < 0.78 || isRiskyMutation(proposedChange);
+    const reviewDecision = buildReviewDecision({
+      classificationConfidence: confidence,
+      matchingConfidence: match.matchingConfidence,
+      eventType,
+      company: record.company,
+      role: record.role,
+      matchReviewReason: match.reviewReason,
+      risky: isRiskyMutation(proposedChange)
+    });
+    const needsReview = reviewDecision.requiresReview;
+    if (needsReview && match.created) {
+      proposedChange.applicationId = undefined;
+    }
     const reviewId = stableId("review", [record.sourceLabel, record.text]);
-    const evidence = createEvidence(record, application.id, needsReview ? reviewId : undefined);
-    const applications = next.applications.some((item) => item.id === application.id)
-      ? next.applications
-      : [application, ...next.applications];
+    const evidence = createEvidence(record, proposedChange.applicationId, needsReview ? reviewId : undefined);
+    const applications = needsReview && match.created ? next.applications : match.applications;
 
     if (needsReview) {
       const alreadyQueued = next.reviewItems.some((item) => item.id === reviewId);
       const review: ReviewItem = {
         id: reviewId,
         status: "open",
-        reason:
-          confidence < 0.78
-            ? "Deterministic parser confidence is below the automatic mutation threshold."
-            : "The proposed change affects stage, deadline, contact, offer, or rejection state.",
+        reason: reviewDecision.reason ?? "Review required before mutating application state.",
         sourceLabel: record.sourceLabel,
         confidence,
         proposedChange,
         evidenceSnippetIds: [evidence.id],
-        traceSummary: "deterministic parser; review gate required",
+        traceSummary: `deterministic parser; ${eventType}; match=${match.matchingConfidence.toFixed(2)}; review gate required`,
         createdAt: now
       };
 
@@ -168,11 +159,15 @@ export function processLocalImport(state: CareerOSState, records: LocalImportRec
       continue;
     }
 
-    const updated = applyMutation(application, proposedChange);
+    if (!application) {
+      continue;
+    }
+
+    const updated = applyProposedMutation(application, proposedChange, "import");
     const event: ApplicationEvent = {
       id: stableId("event", [record.sourceLabel, record.text]),
       applicationId: updated.id,
-      type: "import_applied",
+      type: eventType,
       summary: proposedChange.eventSummary,
       source: "import",
       confidence,
@@ -182,7 +177,8 @@ export function processLocalImport(state: CareerOSState, records: LocalImportRec
       ...next,
       applications: applications.map((item) => (item.id === updated.id ? updated : item)),
       events: next.events.some((item) => item.id === event.id) ? next.events : [event, ...next.events],
-      evidenceSnippets: [evidence, ...next.evidenceSnippets.filter((item) => item.id !== evidence.id)]
+      evidenceSnippets: [evidence, ...next.evidenceSnippets.filter((item) => item.id !== evidence.id)],
+      reminders: ensureReminder(next.reminders, updated, proposedChange)
     };
   }
 
@@ -207,18 +203,18 @@ export async function processLocalImportWithModel(
 
   for (const record of records) {
     const analysis = await analyzeImportRecordWithModel(record, statusReport, options);
-    const application = findOrCreateApplication(next, record);
+    const match = matchOrCreateApplication(next, record, analysis.suggestion?.stage, canCreateApplication(record.company));
+    const application = match.application;
     const reviewId = stableId("review", [
       analysis.suggestion ? "model-suggestion" : "model-invalid",
       record.sourceLabel,
       record.text
     ]);
-    const evidence = createEvidence(record, application.id, reviewId);
     const proposedChange: ProposedMutation = analysis.suggestion
       ? {
-          applicationId: application.id,
-          company: application.company,
-          role: application.role,
+          applicationId: match.created ? undefined : application?.id,
+          company: application?.company ?? record.company,
+          role: application?.role ?? record.role,
           stage: analysis.suggestion.stage,
           contactName: analysis.suggestion.contactName,
           deadlineAt: analysis.suggestion.deadlineAt,
@@ -226,18 +222,28 @@ export async function processLocalImportWithModel(
           eventSummary: `Model suggested: ${analysis.suggestion.summary}`
         }
       : {
-          applicationId: application.id,
-          company: application.company,
-          role: application.role,
+          applicationId: match.created ? undefined : application?.id,
+          company: application?.company ?? record.company,
+          role: application?.role ?? record.role,
           eventSummary: "Invalid model output was blocked before mutation."
         };
+    const evidence = createEvidence(record, proposedChange.applicationId, reviewId);
     const alreadyQueued = next.reviewItems.some((item) => item.id === reviewId);
+    const reviewDecision = buildReviewDecision({
+      classificationConfidence: analysis.suggestion?.confidence ?? 0,
+      matchingConfidence: match.matchingConfidence,
+      eventType: resolveEventType(analysis.suggestion?.stage),
+      company: record.company,
+      role: record.role,
+      matchReviewReason: match.reviewReason,
+      risky: true,
+      modelBacked: Boolean(analysis.suggestion),
+      invalidModelOutput: !analysis.suggestion
+    });
     const review: ReviewItem = {
       id: reviewId,
       status: "open",
-      reason: analysis.suggestion
-        ? "Model-backed suggestion requires user review before mutating application state."
-        : "Model output failed schema validation and was blocked before mutation.",
+      reason: reviewDecision.reason ?? "Model output was queued for review before mutation.",
       sourceLabel: `model:${record.sourceLabel}`,
       confidence: analysis.suggestion?.confidence ?? 0,
       proposedChange,
@@ -248,9 +254,7 @@ export async function processLocalImportWithModel(
 
     next = {
       ...next,
-      applications: next.applications.some((item) => item.id === application.id)
-        ? next.applications
-        : [application, ...next.applications],
+      applications: match.created ? next.applications : match.applications,
       evidenceSnippets: [evidence, ...next.evidenceSnippets.filter((item) => item.id !== evidence.id)],
       reviewItems: alreadyQueued ? next.reviewItems : [review, ...next.reviewItems],
       modelTraces: [

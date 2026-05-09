@@ -82,7 +82,9 @@ export function deriveNotifications(state: CareerOSState): Notification[] {
     });
   }
 
-  const latestTrace = [...state.modelTraces].reverse().find((trace) => trace.provider === "ollama");
+  const latestTrace = state.modelTraces
+    .filter((trace) => trace.provider === "ollama")
+    .sort((left, right) => right.createdAt.localeCompare(left.createdAt))[0];
   if (latestTrace && latestTrace.status !== "ready") {
     const dedupeKey = `model:${latestTrace.status}:${latestTrace.modelTag ?? "none"}`;
     notifications.push({
