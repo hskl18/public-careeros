@@ -1,9 +1,13 @@
 import { NextResponse } from "next/server";
+import { rejectUnsafeLocalMutation } from "@/lib/api-security";
 import { newId, nowIso } from "@/lib/id";
-import { evaluateResumeText } from "@/lib/pipeline";
+import { evaluateResumeTextWithModel } from "@/lib/pipeline";
 import { updateState } from "@/lib/store";
 
 export async function POST(request: Request) {
+  const unsafe = rejectUnsafeLocalMutation(request);
+  if (unsafe) return unsafe;
+
   const form = await request.formData();
   const intent = String(form.get("intent") ?? "analyze");
   const title = String(form.get("title") ?? "Pasted resume");
@@ -29,7 +33,7 @@ export async function POST(request: Request) {
       ]
     }));
   } else {
-    await updateState((state) => evaluateResumeText(state, title, text));
+    await updateState((state) => evaluateResumeTextWithModel(state, title, text));
   }
 
   return NextResponse.redirect(new URL("/resume", request.url), 303);

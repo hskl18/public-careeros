@@ -6,6 +6,15 @@ export type ApplicationStage =
   | "interview"
   | "offer"
   | "rejected";
+export type ApplicationBucket =
+  | "applied"
+  | "waiting"
+  | "followed_up"
+  | "assessment"
+  | "interview"
+  | "rejected"
+  | "offer"
+  | "ghosted";
 
 export type Severity = "info" | "warning" | "critical";
 
@@ -21,6 +30,14 @@ export type ReviewStatus = "open" | "accepted" | "dismissed" | "corrected";
 export type NotificationStatus = "unread" | "read" | "dismissed";
 export type ImportJobStatus = "pending" | "processed" | "failed";
 export type ConnectorStatus = "disabled" | "not_configured" | "disconnected" | "connected" | "needs_attention";
+export type AgentName =
+  | "mailbox_triage"
+  | "workflow_extraction"
+  | "evidence_review"
+  | "resume_context"
+  | "reminder_notification"
+  | "model_router";
+export type AgentRunStatus = "deterministic" | "model_ready" | "review_blocked" | "fallback" | "roadmap";
 
 export interface WorkspaceUser {
   id: string;
@@ -35,6 +52,15 @@ export interface Application {
   role: string;
   stage: ApplicationStage;
   contactName?: string;
+  jobDescriptionUrl?: string;
+  resumeVersion?: string;
+  coverLetterVersion?: string;
+  applicationSource?: string;
+  recruiterContactName?: string;
+  recruiterContactEmail?: string;
+  location?: string;
+  salaryRange?: string;
+  notes?: string;
   deadlineAt?: string;
   followUpAt?: string;
   updatedAt: string;
@@ -55,10 +81,21 @@ export interface EvidenceSnippet {
   id: string;
   applicationId?: string;
   reviewItemId?: string;
+  sourceMessageIds: string[];
+  sourceRelationships?: {
+    mailboxMessageIds: string[];
+    company?: string;
+    role?: string;
+    applicationId?: string;
+    recruiterContactName?: string;
+    recruiterContactEmail?: string;
+    resumeVersion?: string;
+  };
   sourceLabel: string;
   snippet: string;
   hash: string;
   confidence: number;
+  reason: string;
   createdAt: string;
 }
 
@@ -68,6 +105,15 @@ export interface ProposedMutation {
   role?: string;
   stage?: ApplicationStage;
   contactName?: string;
+  jobDescriptionUrl?: string;
+  resumeVersion?: string;
+  coverLetterVersion?: string;
+  applicationSource?: string;
+  recruiterContactName?: string;
+  recruiterContactEmail?: string;
+  location?: string;
+  salaryRange?: string;
+  notes?: string;
   deadlineAt?: string;
   followUpAt?: string;
   eventSummary: string;
@@ -128,6 +174,9 @@ export interface ResumeEvaluation {
   gaps: string[];
   status: "completed" | "blocked_by_review";
   confidence: number;
+  source?: "deterministic" | "ollama";
+  modelTag?: string;
+  diagnostic?: string;
   createdAt: string;
 }
 
@@ -142,6 +191,14 @@ export interface ModelTrace {
   fallbackPath?: string;
   diagnostic: string;
   createdAt: string;
+}
+
+export interface ModelRuntimeSettings {
+  provider: "ollama";
+  enabled: boolean;
+  endpoint: string;
+  modelTag: string;
+  updatedAt: string;
 }
 
 export interface ImportJob {
@@ -163,8 +220,52 @@ export interface ConnectorAccount {
   updatedAt: string;
 }
 
+export interface MailboxMessage {
+  id: string;
+  threadId: string;
+  fromLabel: string;
+  subject: string;
+  snippet: string;
+  receivedAt: string;
+  sourceLabel: string;
+}
+
+export interface MailboxThread {
+  id: string;
+  source: "seed" | "json" | "gmail";
+  subject: string;
+  companyHint?: string;
+  roleHint?: string;
+  messages: MailboxMessage[];
+  createdAt: string;
+}
+
+export interface CandidateContext {
+  id: string;
+  targetRoles: string[];
+  skills: string[];
+  preferences: string[];
+  resumeKeywords: string[];
+  updatedAt: string;
+}
+
+export interface AgentRun {
+  id: string;
+  agent: AgentName;
+  status: AgentRunStatus;
+  inputRef?: string;
+  outputRef?: string;
+  confidence?: number;
+  reason: string;
+  createdAt: string;
+}
+
 export interface CareerOSState {
+  schemaVersion?: number;
   workspaceUser: WorkspaceUser;
+  mailboxThreads: MailboxThread[];
+  candidateContext: CandidateContext;
+  agentRuns: AgentRun[];
   applications: Application[];
   events: ApplicationEvent[];
   evidenceSnippets: EvidenceSnippet[];
@@ -173,15 +274,27 @@ export interface CareerOSState {
   notifications: Notification[];
   resumeDocuments: ResumeDocument[];
   resumeEvaluations: ResumeEvaluation[];
+  modelRuntime: ModelRuntimeSettings;
   modelTraces: ModelTrace[];
   importJobs: ImportJob[];
   connectorAccounts: ConnectorAccount[];
 }
 
 export interface LocalImportRecord {
+  applicationId?: string;
   company: string;
   role: string;
   sourceLabel: string;
   text: string;
+  sourceMessageIds?: string[];
   receivedAt?: string;
+  jobDescriptionUrl?: string;
+  resumeVersion?: string;
+  coverLetterVersion?: string;
+  applicationSource?: string;
+  recruiterContactName?: string;
+  recruiterContactEmail?: string;
+  location?: string;
+  salaryRange?: string;
+  notes?: string;
 }

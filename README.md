@@ -1,235 +1,182 @@
-# CareerOS Public Repo Kit
+# CareerOS
 
-CareerOS is the open-source, local-first job pipeline system behind Other
-Candidate. It turns recruiting email, resume context, and Gemma/Ollama analysis
-into an evidence-backed dashboard for applications, deadlines, review items, and
-notifications.
+A simple local Next.js demo of the CareerOC / Other Candidate job-mailbox
+pipeline for the Kaggle Gemma 4 Good hackathon.
 
-Other Candidate is the hosted product built on CareerOS and published at
-`careeroc.com`.
+CareerOS turns recruiting email into structured application state with a
+multi-agent workflow. It is intentionally still the CareerOS pipeline, not a
+plain job dashboard:
 
-This repository is now the first runnable local-first CareerOS base. It still
-keeps selected source excerpts under `source/`, but the root app can run without
-Gmail, Google sign-in, Vercel, Railway, Neon, or Ollama.
+1. Mailbox triage
+2. Workflow extraction
+3. Evidence and review gate
+4. Resume/context analysis
+5. Reminder and notification generation
+6. Model routing through Gemma via Ollama Cloud
 
-## Public Scope
+The hosted product is **Other Candidate** at `careeroc.com`. This repo is the
+open-source demo: one Next.js app, local state, optional Gmail readonly sync,
+optional Ollama Cloud/Gemma4 analysis, and no separate backend stack.
 
-Release candidate:
+## Agent Contract
 
-- Repository slug: `public-careeros`
-- Product name: `CareerOS`
-- License: MIT, see `LICENSE`
-- Package type: runnable local-first product plus sanitized source excerpts
+The public demo keeps the original CareerOS operating model:
 
-Include:
+| Agent layer | Can do | Cannot do |
+| --- | --- | --- |
+| Mailbox triage | Classify recruiting relevance, urgency, company, role, and action from bounded mailbox snippets | Store full inbox bodies or mutate application state |
+| Workflow extraction | Propose typed application updates such as OA, interview, rejection, offer, deadline, or follow-up | Apply model output directly |
+| Evidence/review | Attach bounded evidence, confidence, source message ids, and block risky/model-backed changes | Hide low-confidence changes from the user |
+| Resume/context | Use local target roles, skills, preferences, and resume keywords as candidate context | Upload resume text to hosted providers in this demo |
+| Reminder/notification | Derive due dates, follow-ups, review blockers, connector health, and model status from reviewed state | Become a second source of truth |
+| Model router/provider | Use deterministic fallback first, or Gemma through Ollama Cloud when `OLLAMA_API_KEY` is configured | Store provider keys in workspace state, auto-download models, or mark roadmap providers as shipped |
 
-- product README and setup notes
-- architecture and runtime diagrams in markdown
-- product design, API surface, and roadmap docs
-- Gemma usage explanation and judge demo flow
-- safe `.env.example` with variable names only
-- security and privacy notes
-- implementation TODOs that are safe to show publicly
-- reviewed source excerpts under `source/`
+Prompt and memory boundaries:
 
-Exclude:
+- Gemma prompts use bounded snippets and ask for strict JSON.
+- Model output is schema-validated and review-gated before mutation.
+- Agent memory is local state: applications, bounded evidence, review items,
+  candidate context, model traces, and notifications under `.careeros-data`.
+- Model traces keep provider, model tag, task, latency, confidence, fallback,
+  and bounded diagnostics. They do not store raw prompts, raw responses, full
+  Gmail bodies, OAuth tokens, or provider keys.
+- First run has zero model cost and starts as a clean workspace. Connect
+  readonly Gmail to create real pipeline records; use `/judge-demo` for the
+  sanitized sample story without touching local workspace state.
 
-- real `.env`, `.env.deploy`, `.env.local`, or Railway/Vercel/Neon secret values
-- Gmail message bodies, OAuth tokens, database dumps, and user emails
-- local screenshots under `.artifacts/` unless they are sanitized and intended
-  for the submission
-- private admin runbooks with account-specific hostnames or credentials
-- generated dependency directories such as `node_modules`, `.next`, `bin`, and
-  `obj`
-
-## Local Setup
-
-Install dependencies and start the local dashboard:
-
-```bash
-./scripts/dev-up.sh
-```
-
-Then open `http://localhost:3000`.
-
-Stop the local stack from another shell:
+## Quick Start
 
 ```bash
-./scripts/dev-down.sh
+pnpm install
+pnpm dev
 ```
 
-The script installs dependencies when needed, seeds local demo data, starts
-Next.js, and records the running process in `.dev/`.
+Open:
 
-Optional overrides:
+```text
+http://localhost:3000
+```
+
+First run opens a clean workspace. To process your real job pipeline, configure
+Gmail OAuth, connect readonly Gmail, then sync recruiting mail. To see the
+sanitized Kaggle story without credentials, open `/judge-demo`.
+
+## Optional: Gemma4 Through Ollama Cloud
+
+CareerOS calls the Ollama Cloud API from the Next.js server. Users do not set
+up a desktop model runtime. Create an Ollama Cloud API key, then create
+`.env.local`:
 
 ```bash
-PORT=3001 ./scripts/dev-up.sh
-CAREEROS_DEV_HOST=127.0.0.1 ./scripts/dev-up.sh
+CAREEROS_OLLAMA_ENABLED=true
+CAREEROS_OLLAMA_BASE_URL=https://ollama.com
+CAREEROS_GEMMA_MODEL=gemma4:e4b
+OLLAMA_API_KEY=your-ollama-cloud-api-key
 ```
 
-On Windows without Git Bash or WSL Bash, use the equivalent PowerShell path:
+Restart `pnpm dev`, then open `/settings` and click **Save and check**.
 
-```powershell
-pnpm dev:up:ps
-```
+Ollama's current docs list `https://ollama.com/api` as the cloud API base URL
+and `OLLAMA_API_KEY` as the authentication env var.
 
-Then open `http://127.0.0.1:3000`. Stop it with:
-
-```powershell
-pnpm dev:down:ps
-```
-
-The first request seeds local demo data into `.careeros-data/careeros.sqlite`. You
-can also reset it explicitly:
+For a real key-backed smoke test without starting the app:
 
 ```bash
-pnpm seed
+OLLAMA_API_KEY=your-ollama-cloud-api-key pnpm smoke:ollama
 ```
 
-Docker is available for the same provider-free path:
+Mental model:
+
+- `http://localhost:3000` is the CareerOS Next.js app.
+- `https://ollama.com/api` is the remote Ollama Cloud API.
+- The browser never sees `OLLAMA_API_KEY`; server routes read it from
+  `.env.local`, call Ollama Cloud, validate JSON, and send proposals to review.
+
+## Optional: Gmail Readonly Sync
+
+Create a Google OAuth Web Application client:
+
+- Authorized JavaScript origin: `http://localhost:3000`
+- Authorized redirect URI:
+  `http://localhost:3000/api/connectors/gmail/callback`
+- Scope used by this demo: `https://www.googleapis.com/auth/gmail.readonly`
+
+Add the local env values:
 
 ```bash
-USE_DOCKER=1 ./scripts/dev-up.sh
+CAREEROS_GMAIL_CONNECTOR_ENABLED=true
+CAREEROS_GMAIL_CLIENT_ID=your-google-oauth-client-id
+CAREEROS_GMAIL_CLIENT_SECRET=your-google-oauth-client-secret
+CAREEROS_GMAIL_REDIRECT_URI=http://localhost:3000/api/connectors/gmail/callback
+CAREEROS_GMAIL_QUERY='newer_than:90d (recruiter OR application OR assessment OR interview OR "next steps" OR offer OR OA)'
+CAREEROS_GMAIL_MAX_RESULTS=10
 ```
 
-Ollama/Gemma is disabled by default. To enable local model status checks and
-bounded model-backed import analysis, copy `.env.example` to `.env.local`, set
-`CAREEROS_OLLAMA_ENABLED=true`, start Ollama, and pull the configured model
-yourself:
+Restart `pnpm dev`, open `/settings?section=gmail`, click **Connect Gmail**,
+finish Google OAuth, then click **Sync recruiting mail**.
 
-```bash
-ollama pull gemma3:4b
-```
+Token boundary: the Gmail token is stored as an AES-GCM envelope at
+`.careeros-data/gmail-oauth.json`, using `CAREEROS_TOKEN_SECRET`,
+`CAREEROS_SECRET_KEY`, or the configured Gmail client secret as key material.
+That directory is gitignored. Do not commit real `.env.local`, Gmail data,
+screenshots with private email, or local state.
 
-CareerOS never downloads model weights automatically.
+## Routes
 
-Model-backed analysis only runs after:
-
-1. Ollama responds on the configured base URL.
-2. The configured Gemma tag is installed.
-3. A small bounded health prompt returns the expected JSON.
-
-Any accepted model output is schema-validated and queued as a review item before
-it can mutate application state. Invalid model output is also review-visible and
-falls back to deterministic behavior.
-
-## Product Summary
-
-CareerOS turns recruiting email into an evidence-backed application pipeline. A
-job seeker connects Gmail, the system syncs recruiting messages, Gemma helps
-classify and extract workflow updates through local or configured Ollama, and
-uncertain changes go through a review gate before they affect the dashboard.
-
-The product surface is intentionally simple: dashboard, applications, review
-queue, resume intelligence, model trace evidence, notifications, and settings.
-Manual/JSON import and deterministic processing work with Ollama disabled. The
-preferred persistence adapter is a local SQLite file behind a repository
-interface. JSON remains available with `CAREEROS_PERSISTENCE=json` for simple
-development fallback.
-
-## Current Hosted Demo Stack
-
-Other Candidate, the hosted product at `careeroc.com`, currently uses:
-
-- Web: Next.js on Vercel
-- API: .NET 8 on Railway
-- Database: Neon PostgreSQL
-- Email: Gmail OAuth and Gmail API
-- Model runtime: Gemma through Ollama, with the demo environment routed to
-  `gemma4:31b-cloud`
-- CI: GitHub Actions for backend tests, frontend lint/build, API contract drift,
-  bundle budget, and production smoke
-
-## Local-First Product Direction
-
-The open-source CareerOS product should be smaller than the hosted Other
-Candidate app:
-
-- dashboard, applications, review, resume, notifications, and local settings
-- Gmail connector as an optional user-controlled source
-- seeded demo data and local import before hosted provider setup
-- optional local Ollama/Gemma analysis with deterministic fallback
-- localhost-first setup and provider-free defaults
-- clear model status before any model-backed pipeline step runs
-
-See [Local-first product plan](docs/local-first-product-plan.md).
-
-## Runnable Routes
-
-- `/`: operational dashboard and manual processing control
-- `/applications`: application state, events, evidence, and local import form
-- `/review`: accept, dismiss, or correct review-gated proposed mutations
-- `/resume`: paste resume text and run deterministic fallback evaluation
-- `/notifications`: derived in-app notification window with dedupe keys
-- `/settings`: local data reset, optional connector status, and Ollama status
-- `/judge-demo`: provider-free judge entry point
+| Route | Purpose |
+| --- | --- |
+| `/` | Local pipeline console |
+| `/judge-demo` | Kaggle judge story and agent handoff demo |
+| `/agents` | Agent contracts, local memory, prompting, and runtime boundaries |
+| `/applications` | Application state and mailbox evidence |
+| `/applications/[id]` | Application detail, timeline, evidence, review blockers |
+| `/review` | Accept, dismiss, or correct review-gated updates |
+| `/resume` | Deterministic + optional Gemma resume analysis |
+| `/notifications` | Local notification queue |
+| `/settings` | Ollama Cloud/Gemma, Gmail, local data, imports |
+| `/api/pipeline` | Inspectable multi-agent pipeline JSON |
+| `/api/providers` | Implemented/roadmap model provider metadata |
 
 ## Local Data
 
-By default, local data is stored at:
+Default state is stored in:
 
 ```text
-.careeros-data/careeros.sqlite
+.careeros-data/state.json
 ```
 
-The SQLite adapter initializes its table on first access and stores the current
-inspectable CareerOS state snapshot. Reset local seed data with:
+Reset from the UI with `/settings`, or delete `.careeros-data` while the dev
+server is stopped. The next app read recreates an empty workspace.
+
+## Commands
 
 ```bash
-pnpm seed
+pnpm dev       # run the local Next.js app
+pnpm check     # TypeScript
+pnpm test      # Vitest
+pnpm build     # production build
+pnpm run ci    # check + test + build
 ```
 
-For JSON fallback:
+## Public Safety
 
-```bash
-CAREEROS_PERSISTENCE=json pnpm dev
-```
+Before publishing, verify:
 
-That writes `.careeros-data/state.json`.
+- No real `.env*` files except `.env.example`
+- No `.careeros-data`, local DBs, Gmail exports, OAuth tokens, or screenshots
+  with private email
+- No hosted provider dashboard URLs or local machine paths
 
-## Optional Gmail Connector
+## Docs
 
-Gmail is visibly optional and disabled by default:
-
-```text
-CAREEROS_GMAIL_CONNECTOR_ENABLED=false
-```
-
-The current connector exposes status, connect/disconnect placeholders, and a
-sync placeholder that returns a clear not-implemented result. It does not start
-OAuth, auto-sync, store credentials, or require Google setup for local use.
-
-## Public Demo Path
-
-Judges should not need to connect their own Gmail account just to understand the
-core product loop. The public app includes a judge-safe fake workspace at
-`/judge-demo` with anonymized recruiting threads, Gemma trace metadata, review
-gates, and one multimodal artifact evidence card.
-
-The real authenticated product remains available for the owner-controlled demo
-account and shows Gmail sync, application state, review queue, resume
-intelligence, and admin diagnostics.
-
-## Public Release Checklist
-
-1. Run `bash scripts/public-safety-check.sh`.
-2. Run `pnpm check`, `pnpm test`, and `pnpm build`.
-3. Start `./scripts/dev-up.sh`, or use the PowerShell commands above on Windows,
-   and smoke `/`, `/applications`, `/review`, `/resume`, `/notifications`, and
-   `/settings` with Ollama disabled.
-4. Confirm every screenshot and fixture is sanitized.
-5. Keep hosted Other Candidate deployment details out of the public base.
-
-## Documentation
-
-- [Public repo scope](docs/public-repo-scope.md)
-- [Architecture summary](docs/architecture.md)
-- [Product design](docs/design.md)
+- [Architecture](docs/architecture.md)
 - [API spec](docs/api-spec.md)
-- [Roadmap](docs/roadmap.md)
-- [Local-first product plan](docs/local-first-product-plan.md)
-- [Logic implementation prompt](docs/logic-implementation-prompt.md)
-- [Frontend implementation prompt](docs/frontend-implementation-prompt.md)
+- [Design](docs/design.md)
 - [Hackathon writeup](docs/hackathon-writeup.md)
-- [Public TODO](docs/todo.md)
+- [Provider roadmap](docs/provider-research.md)
+- [Roadmap](docs/roadmap.md)
+- [Release summary](docs/release-summary.md)
+
+## License
+
+MIT — see [LICENSE](LICENSE).

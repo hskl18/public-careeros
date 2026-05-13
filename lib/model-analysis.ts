@@ -1,5 +1,5 @@
 import { performance } from "perf_hooks";
-import { checkOllamaStatus, type ModelRuntimeOptions, type ModelStatusReport } from "./model-status";
+import { checkOllamaStatus, ollamaApiUrl, ollamaHeaders, type ModelRuntimeOptions, type ModelStatusReport } from "./model-status";
 import type { ApplicationStage, LocalImportRecord } from "./types";
 
 export interface ModelImportSuggestion {
@@ -104,29 +104,28 @@ export async function analyzeImportRecordWithModel(
     };
   }
 
-  const endpoint = report.endpoint.replace(/\/$/, "");
   const fetchFn = options.fetchFn ?? fetch;
   const timeoutMs = options.timeoutMs ?? 3500;
   const started = performance.now();
   try {
-    const response = await fetchFn(`${endpoint}/api/generate`, {
+    const response = await fetchFn(ollamaApiUrl(report.endpoint, "/generate"), {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: ollamaHeaders(report.endpoint, options.apiKey ?? process.env.OLLAMA_API_KEY ?? process.env.CAREEROS_OLLAMA_API_KEY, true),
       body: JSON.stringify({
         model: report.modelTag,
         stream: false,
         prompt: [
-          "You are CareerOS local import analysis.",
-          "Return only a JSON object with keys: confidence, summary, reason, stage, deadlineAt, followUpAt, contactName.",
-          "Use ISO timestamps or null for dates. Do not include raw message text.",
-          `Company: ${boundedText(record.company, 80)}`,
-          `Role: ${boundedText(record.role, 80)}`,
-          `Source: ${boundedText(record.sourceLabel, 80)}`,
-          `Snippet: ${boundedText(record.text, 600)}`
+          "CareerOS workflow extractor. Return JSON only:",
+          "{confidence,summary,reason,stage,deadlineAt,followUpAt,contactName}.",
+          "Dates must be ISO or null. Do not repeat raw mail. Output is review-gated.",
+          `Company: ${boundedText(record.company, 64)}`,
+          `Role: ${boundedText(record.role, 64)}`,
+          `Source: ${boundedText(record.sourceLabel, 64)}`,
+          `Snippet: ${boundedText(record.text, 420)}`
         ].join("\n"),
         options: {
           temperature: 0,
-          num_predict: 220
+          num_predict: 160
         }
       }),
       signal: AbortSignal.timeout(timeoutMs)

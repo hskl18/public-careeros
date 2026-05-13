@@ -1,7 +1,18 @@
 {
   "name": "careeros",
   "version": "0.1.0",
-  "description": "Local-first CareerOS job pipeline dashboard.",
+  "description": "Next.js demo of the CareerOC multi-agent job mailbox pipeline with Gmail readonly sync and Gemma via Ollama Cloud.",
+  "keywords": [
+    "careeros",
+    "careeroc",
+    "gemma",
+    "ollama",
+    "gmail",
+    "job-search",
+    "multi-agent",
+    "nextjs",
+    "kaggle"
+  ],
   "license": "MIT",
   "packageManager": "pnpm@10.19.0",
   "homepage": "https://github.com/hskl18/public-careeros#readme",
@@ -16,17 +27,13 @@
     "node": ">=22.5.0"
   },
   "scripts": {
-    "dev:up": "bash scripts/dev-up.sh",
-    "dev:down": "bash scripts/dev-down.sh",
-    "dev:up:ps": "powershell -ExecutionPolicy Bypass -File scripts/dev-up.ps1",
-    "dev:down:ps": "powershell -ExecutionPolicy Bypass -File scripts/dev-down.ps1",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "check": "tsc --noEmit",
     "test": "vitest run",
-    "seed": "tsx scripts/seed-local.ts",
-    "ci": "bash scripts/public-safety-check.sh && pnpm check && pnpm test && pnpm build"
+    "smoke:ollama": "tsx tools/ollama-cloud-smoke.ts",
+    "ci": "pnpm check && pnpm test && pnpm build"
   },
   "dependencies": {
     "next": "^15.5.18",

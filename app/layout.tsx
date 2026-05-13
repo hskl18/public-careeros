@@ -1,107 +1,205 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import { AppNav } from "@/components/app-nav";
 import { BrandLogo } from "@/components/brand-logo";
+import { IconBell, IconReview, IconSettings, IconSpark } from "@/components/icons";
+import type { ModelProviderStatus } from "@/lib/types";
 import { readServerState } from "@/lib/server-state";
 
+type HeaderTone = "ok" | "warn" | "danger" | "info" | "muted";
+
+function modelHeaderState(
+  status: ModelProviderStatus | "deterministic" | undefined
+): { tone: HeaderTone; short: string; long: string } {
+  switch (status) {
+    case "ready":
+      return { tone: "ok", short: "Gemma", long: "Gemma ready" };
+    case "model_missing":
+      return { tone: "warn", short: "Tag", long: "Model tag missing" };
+    case "unavailable":
+    case "health_check_failed":
+      return { tone: "danger", short: "Cloud", long: "Ollama Cloud issue" };
+    case "reachable":
+      return { tone: "info", short: "Check", long: "Checking…" };
+    default:
+      return { tone: "muted", short: "Rules", long: "Deterministic" };
+  }
+}
+
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
+const metadataTitle = "CareerOS - CareerOC Demo";
+const metadataDescription =
+  "A Next.js demo of the CareerOC multi-agent job mailbox pipeline, using Gmail readonly sync, review gates, and Gemma via Ollama Cloud.";
+
+const geistSans = Geist({
+  subsets: ["latin"],
+  variable: "--font-geist",
+  display: "swap"
+});
+
+const geistMono = Geist_Mono({
+  subsets: ["latin"],
+  variable: "--font-geist-mono",
+  display: "swap"
+});
+
 export const metadata: Metadata = {
-  title: "CareerOS",
-  description: "Local-first job pipeline dashboard with review gates and optional Gemma analysis."
+  metadataBase: new URL(siteUrl),
+  applicationName: "CareerOS",
+  title: {
+    default: metadataTitle,
+    template: "%s | CareerOS"
+  },
+  description: metadataDescription,
+  keywords: [
+    "CareerOS",
+    "CareerOC",
+    "Other Candidate",
+    "Gemma 4",
+    "Ollama",
+    "Gmail",
+    "job search",
+    "multi-agent pipeline",
+    "Kaggle Gemma 4 Good"
+  ],
+  authors: [{ name: "CareerOS" }],
+  creator: "CareerOS",
+  publisher: "CareerOS",
+  category: "productivity",
+  alternates: {
+    canonical: "/"
+  },
+  openGraph: {
+    type: "website",
+    url: "/",
+    siteName: "CareerOS",
+    title: metadataTitle,
+    description: metadataDescription
+  },
+  twitter: {
+    card: "summary",
+    title: metadataTitle,
+    description: metadataDescription
+  },
+  robots: {
+    index: true,
+    follow: true
+  },
+  icons: {
+    icon: [
+      { url: "/favicon.ico", sizes: "any" },
+      { url: "/icon.svg", type: "image/svg+xml" }
+    ],
+    apple: [{ url: "/apple-icon.png", sizes: "180x180", type: "image/png" }]
+  }
 };
 
 export const dynamic = "force-dynamic";
 
-const navItems = [
-  { href: "/", label: "Dashboard" },
-  { href: "/applications", label: "Applications" },
-  { href: "/review", label: "Review" },
-  { href: "/resume", label: "Resume" },
-  { href: "/notifications", label: "Notifications" },
-  { href: "/settings", label: "Settings" }
-];
-
-function severityBadgeClass(severity: string) {
-  if (severity === "critical") return "badge danger";
-  if (severity === "warning") return "badge warn";
-  return "badge info";
-}
-
 export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   const state = await readServerState();
-  const connector = state.connectorAccounts.find((item) => item.provider === "gmail");
-  const latestModelTrace = state.modelTraces.find((item) => item.provider === "ollama");
   const unreadCount = state.notifications.filter((item) => item.status === "unread").length;
-  const openReviewCount = state.reviewItems.filter((item) => item.status === "open").length;
-  const connectorStatus = connector?.status ?? "disconnected";
-  const modelMode =
-    latestModelTrace?.status === "ready"
-      ? "Gemma ready"
-      : process.env.CAREEROS_OLLAMA_ENABLED === "true"
-        ? "Check settings"
-        : "Deterministic-only";
-  const workspaceStatus = state.applications.length
-    ? state.importJobs.some((item) => item.source === "seed")
-      ? "Seeded demo data"
-      : `${state.applications.length} applications`
-    : "Empty workspace";
+  const criticalCount = state.notifications.filter(
+    (item) => item.status !== "dismissed" && item.severity === "critical"
+  ).length;
+  const reviewCount = state.reviewItems.filter((item) => item.status === "open").length;
+  const latestModelTrace = state.modelTraces.find((item) => item.provider === "ollama");
+  const modelState = modelHeaderState(latestModelTrace?.status);
+  const notificationsTone: HeaderTone = criticalCount > 0 ? "danger" : unreadCount > 0 ? "warn" : "muted";
+  const notificationsLabel = unreadCount
+    ? `${unreadCount} unread notification${unreadCount === 1 ? "" : "s"}`
+    : "No unread notifications";
+  const profileLabel = `Settings · signed in as ${state.workspaceUser.name}`;
 
   return (
-    <html lang="en">
+    <html lang="en" className={`${geistSans.variable} ${geistMono.variable}`}>
       <body>
+        <a className="skip-link" href="#main">
+          Skip to content
+        </a>
         <div className="app-shell">
-          <aside className="sidebar">
-            <Link className="brand flex min-h-11 items-center gap-3" href="/" prefetch={false}>
-              <BrandLogo />
-            </Link>
-            <nav>
-              {navItems.map((item) => (
-                <Link
-                  className="flex min-h-10 items-center rounded-full border border-transparent px-3.5 text-[13px] font-bold text-[var(--muted)] transition hover:-translate-y-px hover:border-[var(--line)] hover:bg-white/70 hover:text-[var(--ink)] max-[720px]:min-w-max max-[720px]:justify-center max-[720px]:px-3 max-[720px]:text-xs"
-                  key={item.href}
-                  href={item.href}
-                  prefetch={false}
-                >
-                  {item.label}
-                </Link>
-              ))}
-            </nav>
-            <p className="sidebar-note">
-              Gmail and Ollama are optional. Local imports, seeded demo data, deterministic rules, and review gates work
-              before any provider setup.
-            </p>
-          </aside>
-          <div className="main-column">
-            <div className="status-strip">
-              <div
-                className="status-items"
-                aria-label="Local runtime status"
-              >
-                <div className="status-chip">
-                  <small>Workspace</small>
-                  <strong>{workspaceStatus}</strong>
-                </div>
-                <div className="status-chip">
-                  <small>Model mode</small>
-                  <strong>{modelMode}</strong>
-                </div>
-                <div className="status-chip">
-                  <small>Gmail</small>
-                  <strong>{connectorStatus === "connected" ? "Connected" : connectorStatus === "needs_attention" ? "Needs attention" : "Not connected"}</strong>
-                </div>
-                <div className="status-chip">
-                  <small>Review gate</small>
-                  <strong>{openReviewCount} blocking update{openReviewCount === 1 ? "" : "s"}</strong>
-                </div>
-              </div>
-              <Link
-                className={`${unreadCount > 0 ? severityBadgeClass("warning") : "badge ok"} max-[720px]:flex-none`}
-                href="/notifications"
-                prefetch={false}
-              >
-                Notifications {unreadCount}
+          <header className="workspace-header">
+            <div className="workspace-header-inner">
+              <Link className="workspace-brand" href="/" prefetch={false}>
+                <BrandLogo />
               </Link>
+
+              <AppNav />
+
+              <div className="workspace-header-spacer" />
+
+              <div className="header-actions" role="group" aria-label="Workspace actions">
+                <div
+                  className={`header-status-cluster header-tone-${modelState.tone}`}
+                  aria-label={`Workspace pipeline · ${modelState.long}${reviewCount > 0 ? ` · ${reviewCount} review open` : ""}`}
+                >
+                  <Link
+                    className="header-status-segment header-status-segment--model"
+                    href="/settings"
+                    prefetch={false}
+                    aria-label={`Model mode: ${modelState.long}. Open settings.`}
+                    title={modelState.long}
+                  >
+                    <span className="header-status-dot" aria-hidden="true" />
+                    <IconSpark />
+                    <span className="header-status-label">
+                      <small>Workspace pipeline</small>
+                      <strong>{modelState.long}</strong>
+                    </span>
+                    <span className="header-status-label-short" aria-hidden="true">{modelState.short}</span>
+                  </Link>
+                  {reviewCount > 0 ? (
+                    <Link
+                      className="header-status-segment header-status-segment--review"
+                      href="/review"
+                      prefetch={false}
+                      aria-label={`${reviewCount} open review item${reviewCount === 1 ? "" : "s"}`}
+                      title={`${reviewCount} open review`}
+                    >
+                      <IconReview />
+                      <span className="header-status-label">
+                        <small>Review</small>
+                        <strong>{reviewCount}</strong>
+                      </span>
+                      <span className="header-status-label-short" aria-hidden="true">{reviewCount}</span>
+                    </Link>
+                  ) : null}
+                </div>
+
+                <Link
+                  className={`header-icon-button header-tone-${notificationsTone}`}
+                  href="/notifications"
+                  prefetch={false}
+                  aria-label={notificationsLabel}
+                  title={notificationsLabel}
+                >
+                  <IconBell />
+                  {unreadCount > 0 ? (
+                    <span className="header-icon-button__count" aria-hidden="true">{unreadCount}</span>
+                  ) : null}
+                </Link>
+
+                <Link
+                  className="header-icon-button header-icon-button--ghost"
+                  href="/settings"
+                  prefetch={false}
+                  aria-label={profileLabel}
+                  title={profileLabel}
+                >
+                  <IconSettings />
+                </Link>
+              </div>
             </div>
-            <main className="main-surface">{children}</main>
+          </header>
+
+          <div className="workspace-body" id="main">
+            {children}
+          </div>
+
+          <div className="workspace-bottom-nav">
+            <AppNav mode="bottom" />
           </div>
         </div>
       </body>

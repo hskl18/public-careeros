@@ -1,6 +1,7 @@
 import { stableId, nowIso } from "./id";
 import type {
   Application,
+  ApplicationBucket,
   ApplicationEvent,
   ApplicationStage,
   CareerOSState,
@@ -23,6 +24,14 @@ const stageRank: Record<ApplicationStage, number> = {
   offer: 50,
   rejected: 60
 };
+
+const terminalOrForwardStages = new Set<ApplicationStage>([
+  "recruiter_reply",
+  "assessment",
+  "interview",
+  "offer",
+  "rejected"
+]);
 
 export interface ApplicationMatchResult {
   application?: Application;
@@ -59,6 +68,25 @@ export function resolveStage(current: ApplicationStage, recommended?: Applicatio
   return stageRank[recommended] >= stageRank[current] ? recommended : current;
 }
 
+export function applicationStageRank(stage: ApplicationStage) {
+  return stageRank[stage];
+}
+
+export function applicationBucketFor(application: Application, now = new Date()): ApplicationBucket {
+  if (application.stage === "assessment") return "assessment";
+  if (application.stage === "interview") return "interview";
+  if (application.stage === "offer") return "offer";
+  if (application.stage === "rejected") return "rejected";
+  if (application.stage === "recruiter_reply") return "waiting";
+
+  const followUpAt = application.followUpAt ? new Date(application.followUpAt).getTime() : NaN;
+  if (Number.isFinite(followUpAt)) {
+    return followUpAt < now.getTime() ? "ghosted" : "followed_up";
+  }
+
+  return "applied";
+}
+
 export function resolveEventType(stage?: ApplicationStage) {
   switch (stage) {
     case "recruiter_reply":
@@ -80,7 +108,21 @@ export function resolveEventType(stage?: ApplicationStage) {
 
 export function matchOrCreateApplication(
   state: CareerOSState,
-  record: Pick<LocalImportRecord, "company" | "role"> & { applicationId?: string },
+  record: Pick<
+    LocalImportRecord,
+    | "company"
+    | "role"
+    | "applicationId"
+    | "jobDescriptionUrl"
+    | "resumeVersion"
+    | "coverLetterVersion"
+    | "applicationSource"
+    | "recruiterContactName"
+    | "recruiterContactEmail"
+    | "location"
+    | "salaryRange"
+    | "notes"
+  >,
   recommendedStage: ApplicationStage | undefined,
   allowAutoCreate: boolean
 ): ApplicationMatchResult {
@@ -159,6 +201,16 @@ export function matchOrCreateApplication(
     company,
     role: role || unknownRole,
     stage: recommendedStage ?? "applied",
+    jobDescriptionUrl: record.jobDescriptionUrl,
+    resumeVersion: record.resumeVersion,
+    coverLetterVersion: record.coverLetterVersion,
+    applicationSource: record.applicationSource,
+    recruiterContactName: record.recruiterContactName,
+    recruiterContactEmail: record.recruiterContactEmail,
+    contactName: record.recruiterContactName,
+    location: record.location,
+    salaryRange: record.salaryRange,
+    notes: record.notes,
     updatedAt: nowIso(),
     source: "import"
   };
@@ -241,6 +293,15 @@ export function applyProposedMutation(
     role: normalizeIdentity(change.role ?? application.role),
     stage: resolveStage(application.stage, change.stage),
     contactName: change.contactName ?? application.contactName,
+    jobDescriptionUrl: change.jobDescriptionUrl ?? application.jobDescriptionUrl,
+    resumeVersion: change.resumeVersion ?? application.resumeVersion,
+    coverLetterVersion: change.coverLetterVersion ?? application.coverLetterVersion,
+    applicationSource: change.applicationSource ?? application.applicationSource,
+    recruiterContactName: change.recruiterContactName ?? change.contactName ?? application.recruiterContactName,
+    recruiterContactEmail: change.recruiterContactEmail ?? application.recruiterContactEmail,
+    location: change.location ?? application.location,
+    salaryRange: change.salaryRange ?? application.salaryRange,
+    notes: change.notes ?? application.notes,
     deadlineAt: change.deadlineAt ?? application.deadlineAt,
     followUpAt: change.followUpAt ?? application.followUpAt,
     updatedAt: nowIso(),
@@ -310,4 +371,23 @@ export function ensureReminder(reminders: Reminder[], application: Application, 
   };
 
   return [reminder, ...reminders];
+}
+
+export function suppressStaleFollowUps(reminders: Reminder[], application: Application, change: ProposedMutation): Reminder[] {
+  const stage = change.stage;
+  if (!stage || !terminalOrForwardStages.has(stage)) return reminders;
+
+  return reminders.map((reminder) =>
+    reminder.applicationId === application.id && reminder.status === "open" && reminder.type === "follow_up"
+      ? { ...reminder, status: "dismissed", decidedAt: nowIso() }
+      : reminder
+  );
+}
+
+export function refreshRemindersForMutation(
+  reminders: Reminder[],
+  application: Application,
+  change: ProposedMutation
+): Reminder[] {
+  return ensureReminder(suppressStaleFollowUps(reminders, application, change), application, change);
 }

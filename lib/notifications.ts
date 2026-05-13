@@ -39,7 +39,7 @@ export function deriveNotifications(state: CareerOSState): Notification[] {
         severity: due < Date.now() ? "critical" : "info",
         sourceType: "reminder",
         sourceId: reminder.id,
-        href: application ? `/applications#${application.id}` : "/applications",
+        href: application ? `/applications/${application.id}` : "/applications",
         status: keepExistingStatus(state, dedupeKey),
         createdAt
       });
@@ -59,7 +59,7 @@ export function deriveNotifications(state: CareerOSState): Notification[] {
         severity: deadline < Date.now() ? "critical" : "warning",
         sourceType: "application",
         sourceId: application.id,
-        href: `/applications#${application.id}`,
+        href: `/applications/${application.id}`,
         status: keepExistingStatus(state, dedupeKey),
         createdAt
       });
@@ -76,7 +76,7 @@ export function deriveNotifications(state: CareerOSState): Notification[] {
       severity: "info",
       sourceType: "application",
       sourceId: application.id,
-      href: `/applications#${application.id}`,
+      href: `/applications/${application.id}`,
       status: keepExistingStatus(state, dedupeKey),
       createdAt
     });
@@ -107,7 +107,7 @@ export function deriveNotifications(state: CareerOSState): Notification[] {
       id: stableId("notification", [dedupeKey]),
       dedupeKey,
       title: "Gmail connector needs attention",
-      body: "The optional connector is disconnected or needs setup. Local dashboard use is unaffected.",
+      body: "The optional connector is disconnected or needs setup. Local console use is unaffected.",
       severity: "warning",
       sourceType: "connector",
       sourceId: connector.id,

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { rejectUnsafeLocalMutation } from "@/lib/api-security";
 import { updateReminderStatus } from "@/lib/review";
 import { updateState } from "@/lib/store";
 
@@ -10,6 +11,9 @@ function parseReminderStatus(value: string) {
 }
 
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
+  const unsafe = rejectUnsafeLocalMutation(request);
+  if (unsafe) return unsafe;
+
   const { id } = await context.params;
   const contentType = request.headers.get("content-type") ?? "";
   let intent = "done";

@@ -4,8 +4,8 @@ import {
   applyProposedMutation,
   buildDecisionEvent,
   canCreateApplication,
-  ensureReminder,
-  matchOrCreateApplication
+  matchOrCreateApplication,
+  refreshRemindersForMutation
 } from "./workflow";
 
 function resolveReviewApplication(state: CareerOSState, change: ProposedMutation) {
@@ -52,7 +52,7 @@ function applyReviewedChange(
   return {
     ...state,
     applications,
-    reminders: ensureReminder(state.reminders, updatedApplication, revisedChange),
+    reminders: refreshRemindersForMutation(state.reminders, updatedApplication, revisedChange),
     events: event && !state.events.some((item) => item.id === event.id) ? [event, ...state.events] : state.events,
     reviewItems: state.reviewItems.map((item) =>
       item.id === review.id

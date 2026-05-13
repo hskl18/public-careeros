@@ -1,151 +1,230 @@
-import { readServerState } from "@/lib/server-state";
+import type { ReactNode } from "react";
+import { checkServerOllamaStatus, readServerState } from "@/lib/server-state";
 
 export const dynamic = "force-dynamic";
 
-const RESUME_EVALUATION_LIMIT = 20;
-
-function dateLabel(value: string) {
-  return new Intl.DateTimeFormat("en", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(
-    new Date(value)
-  );
+function dateLabel(value?: string) {
+  return value
+    ? new Intl.DateTimeFormat("en", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(value))
+    : "not filed";
 }
 
 export default async function ResumePage() {
-  const state = await readServerState();
-  const completed = state.resumeEvaluations.filter((item) => item.status === "completed");
-  const blocked = state.resumeEvaluations.filter((item) => item.status === "blocked_by_review");
+  const [state, modelStatus] = await Promise.all([readServerState(), checkServerOllamaStatus()]);
   const latestDocument = state.resumeDocuments[0];
   const latestEvaluation = state.resumeEvaluations.find((item) => item.resumeDocumentId === latestDocument?.id);
-  const visibleEvaluations = state.resumeEvaluations.slice(0, RESUME_EVALUATION_LIMIT);
+  const fallbackEvaluation =
+    latestEvaluation?.source === "ollama" && latestEvaluation.status === "blocked_by_review"
+      ? state.resumeEvaluations.find(
+          (item) => item.resumeDocumentId === latestDocument?.id && item.source === "deterministic"
+        )
+      : undefined;
+  const skills = latestEvaluation?.strengths.length ?? 0;
+  const gaps = latestEvaluation?.gaps.length ?? 0;
+  const score = latestEvaluation ? Math.round(latestEvaluation.confidence * 100) : 0;
+  const analysisMode = latestEvaluation?.source === "ollama" ? "Gemma via Ollama Cloud" : "Deterministic fallback";
+  const modelReady = modelStatus.status === "ready";
 
   return (
-    <div className="page resume-page">
-      <header className="page-header">
-        <div>
-          <p className="eyebrow">Resume</p>
-          <h1>Analyze local resume text</h1>
-          <p className="subtle">
-            Paste a resume, keep the raw text local, and route weak extraction results through correction before applying them.
-          </p>
-        </div>
-        <div className="header-stack">
-          <span className={completed.length ? "badge ok" : "badge warn"}>{completed.length} complete</span>
-          <span className={blocked.length ? "badge warn" : "badge ok"}>{blocked.length} need correction</span>
-        </div>
-      </header>
-
-      <section className="grid two">
-        <article className="section">
-          <div className="section-title">
+    <main className="app-scroll-main">
+      <div className="workspace-shell resume-workspace mx-auto w-full max-w-[104rem] px-3 py-4 sm:px-5 sm:py-6">
+        <section className="card app-workspace-panel resume-dossier overflow-hidden p-0">
+          <header className="resume-dossier-head">
             <div>
-              <h2>Paste or upload resume</h2>
-              <p className="subtle">The demo runtime accepts pasted text. Upload support is represented as a disabled local control.</p>
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="eyebrow">Resume dossier</p>
+                <span className="badge info">Dossier</span>
+                <span className="badge">{analysisMode}</span>
+                <span className="badge info">Review-gated output</span>
+                {latestEvaluation?.status === "blocked_by_review" ? <span className="badge warning">Review blocked</span> : null}
+              </div>
+              <h1 className="mt-3 text-lg font-semibold text-[var(--text-primary)]">
+                {latestDocument?.title ?? "Candidate context not set"}
+              </h1>
+              <p className="mt-2 text-xs text-[var(--text-tertiary)]">
+                saved {dateLabel(latestDocument?.createdAt)} - {latestEvaluation?.status ?? "not analyzed"}
+              </p>
             </div>
-          </div>
-          <form className="form" action="/api/resume" method="post">
-            <label>
-              Title
-              <input name="title" placeholder="Software engineering resume" />
-            </label>
-            <label>
-              Resume text
-              <textarea
-                name="text"
-                placeholder="Experience: ... Projects: ... Skills: ..."
-                required
-                rows={11}
-              />
-            </label>
-            <div className="actions">
-              <button className="button" name="intent" type="submit" value="analyze">
-                Analyze resume
-              </button>
-              <button className="button secondary" name="intent" type="submit" value="save">
-                Save draft only
-              </button>
-              <button className="button secondary" disabled type="button">
-                Upload PDF disabled
-              </button>
+            <div className="resume-score-grid">
+              {[
+                ["Overall", score],
+                ["Skills", skills],
+                ["Gaps", gaps],
+                ["Sections", latestDocument?.sections.length ?? 0]
+              ].map(([label, value]) => (
+                <div className="metric-filter" key={label}>
+                  <span>{label}</span>
+                  <strong>{value}</strong>
+                </div>
+              ))}
             </div>
-          </form>
-        </article>
+          </header>
 
-        <article className="section">
-          <div className="section-title">
-            <h2>Analysis status</h2>
-            <span className={latestEvaluation?.status === "completed" ? "badge ok" : "badge warn"}>
-              {latestEvaluation?.status ?? "not analyzed"}
-            </span>
-          </div>
-          <div className="state-matrix single">
-            <div className="state-cell">
-              <span className="label">Resume text pasted but not analyzed</span>
-              <strong>{latestDocument && !latestEvaluation ? "Pending" : "Ready path"}</strong>
-              <small>Text can exist before evaluation; the correction path remains visible instead of hiding uncertainty.</small>
-            </div>
-            <div className="state-cell">
-              <span className="label">Resume analysis complete</span>
-              <strong>{completed.length ? `${completed.length} completed` : "No completed pass"}</strong>
-              <small>Completed evaluations still keep gaps editable before you reuse bullets in applications.</small>
-            </div>
-            <div className="state-cell">
-              <span className="label">Correction path</span>
-              <strong>{blocked.length ? "Required" : "Available"}</strong>
-              <small>Short or weak input is marked blocked by review and asks for more evidence.</small>
-            </div>
-          </div>
-        </article>
-      </section>
+          <div className="resume-dossier-body">
+            <aside className="resume-agent-rail">
+              <p className="eyebrow">Resume agents</p>
+              {(() => {
+                const activeIndex = latestEvaluation ? 3 : latestDocument ? 1 : 0;
+                const steps: Array<[string, string, string]> = [
+                  ["01", "Ingest", latestDocument ? "resume source saved" : "waiting for text"],
+                  ["02", "Extract", `${latestDocument?.sections.length ?? 0} sections`],
+                  ["03", "Correct", latestEvaluation?.status === "blocked_by_review" ? "needs edits" : "0 saved edits"],
+                  ["04", "Review", latestEvaluation ? `${score}/100 recruiter score` : "not analyzed"]
+                ];
+                return steps.map(([step, title, detail], index) => (
+                  <div className={`resume-agent-step ${index === activeIndex ? "active" : ""}`} key={step}>
+                    <span>{step}</span>
+                    <strong>{title}</strong>
+                    <small>{detail}</small>
+                  </div>
+                ));
+              })()}
+            </aside>
 
-      <section className="section">
-        <div className="section-title">
-          <div>
-            <h2>Resume evaluations</h2>
-            <p className="subtle">
-              Showing {visibleEvaluations.length} of {state.resumeEvaluations.length}. Newest evaluations first, with
-              deterministic confidence and correction guidance.
-            </p>
-          </div>
-          {state.resumeEvaluations.length > visibleEvaluations.length ? (
-            <span className="badge info">+{state.resumeEvaluations.length - visibleEvaluations.length} older</span>
-          ) : null}
-        </div>
-        {state.resumeEvaluations.length ? (
-          <div className="list">
-            {visibleEvaluations.map((evaluation) => {
-              const resume = state.resumeDocuments.find((item) => item.id === evaluation.resumeDocumentId);
-              return (
-                <article className="card" key={evaluation.id}>
-                  <div className="row split">
-                    <div>
-                      <h3>{resume?.title ?? "Resume"}</h3>
-                      <p className="subtle">
-                        {dateLabel(evaluation.createdAt)} · confidence {Math.round(evaluation.confidence * 100)}%
-                      </p>
-                    </div>
-                    <span className={evaluation.status === "completed" ? "badge ok" : "badge warn"}>
-                      {evaluation.status}
-                    </span>
+            <section className="resume-dossier-content">
+              <section className="resume-first-run-path" aria-label="Resume analysis path">
+                <div>
+                  <p className="eyebrow">Candidate context path</p>
+                  <h2>Add resume context so mailbox updates can be judged against the candidate.</h2>
+                  <p>
+                    Deterministic extraction is always available. Gemma via Ollama Cloud is optional and only becomes
+                    model-backed when your API key and model tag pass the readiness check.
+                  </p>
+                </div>
+                <div className="resume-path-grid">
+                  {[
+                    ["01", "Paste", latestDocument ? "local text saved" : "waiting for resume text"],
+                    ["02", "Analyze", latestEvaluation ? analysisMode : "not analyzed"],
+                    ["03", "Inspect", latestEvaluation?.status === "blocked_by_review" ? "review-gated" : "ready for review"],
+                    ["04", "Correct", "user edits stay local"]
+                  ].map(([step, label, detail]) => (
+                    <article key={step}>
+                      <span>{step}</span>
+                      <strong>{label}</strong>
+                      <small>{detail}</small>
+                    </article>
+                  ))}
+                </div>
+              </section>
+
+              <section className="resume-model-state" aria-label="Resume model state">
+                <div>
+                  <span>Active mode</span>
+                  <strong>{analysisMode}</strong>
+                  <small>
+                    {latestEvaluation?.source === "ollama"
+                      ? "Model-backed Gemma analysis is schema-checked and review-gated before it can affect application context."
+                      : "Deterministic fallback keeps resume context usable without Ollama Cloud, API keys, or downloads."}
+                  </small>
+                </div>
+                <div>
+                  <span>Optional Gemma</span>
+                  <strong>{modelReady ? `${modelStatus.modelTag} ready` : `${modelStatus.status}`}</strong>
+                  <small>
+                    {modelReady
+                      ? "Resume analysis can use Ollama Cloud when requested."
+                      : "Connect Gemma in Settings when you want model-backed proposals."}
+                  </small>
+                </div>
+                <div>
+                  <span>Blocked output</span>
+                  <strong>{latestEvaluation?.status === "blocked_by_review" ? "Review-gated" : "No blocker"}</strong>
+                  <small>Invalid or uncertain model output is kept for review instead of being treated as a silent failure.</small>
+                </div>
+              </section>
+
+              <ResumeSection number="01" status={latestDocument ? "Saved" : "Empty"} title="Paste resume text">
+                <form className="form" action="/api/resume" method="post">
+                  <label>
+                    <span className="label">Title</span>
+                    <input
+                      name="title"
+                      defaultValue={latestDocument?.title ?? ""}
+                      placeholder="resume-product-v3.pdf"
+                      required
+                    />
+                  </label>
+                  <label>
+                    <span className="label">Resume text</span>
+                    <textarea
+                      name="text"
+                      placeholder="Experience: ... Projects: ... Skills: ..."
+                      required
+                      rows={8}
+                      defaultValue={latestDocument?.text ?? ""}
+                    />
+                  </label>
+                  <div className="actions">
+                    <button className="button primary" name="intent" type="submit" value="analyze">Analyze resume</button>
+                    <button className="button secondary" name="intent" type="submit" value="save">Save draft only</button>
                   </div>
-                  <p>{evaluation.summary}</p>
-                  <div className="grid two compact">
-                    <div className="tile">
-                      <span className="label">Strengths</span>
-                      <strong>{evaluation.strengths.join(", ")}</strong>
-                    </div>
-                    <div className="tile">
-                      <span className="label">Gaps to correct</span>
-                      <strong>{evaluation.gaps.join(", ")}</strong>
-                    </div>
+                </form>
+              </ResumeSection>
+
+              <ResumeSection number="02" status={latestEvaluation ? "Parsed" : "Waiting"} title="Summary">
+                <div className="resume-field">
+                    {latestEvaluation?.summary ?? "Paste resume text above, then analyze it to create a local resume profile."}
+                </div>
+                {latestEvaluation?.diagnostic ? (
+                  <div className="resume-field mt-3">
+                    <span>Analysis path</span>
+                    <strong>
+                      {latestEvaluation.source === "ollama" ? `Gemma via Ollama Cloud${latestEvaluation.modelTag ? ` (${latestEvaluation.modelTag})` : ""}` : "Deterministic fallback"}
+                    </strong>
+                    <small>{latestEvaluation.diagnostic}</small>
                   </div>
-                </article>
-              );
-            })}
+                ) : null}
+                {fallbackEvaluation ? (
+                  <div className="resume-field mt-3">
+                    <span>Deterministic fallback</span>
+                    <strong>{fallbackEvaluation.summary}</strong>
+                    <small>Kept because model-backed resume output is blocked until the user reviews it.</small>
+                  </div>
+                ) : null}
+              </ResumeSection>
+
+              <ResumeSection number="03" status={latestEvaluation ? "Parsed" : "Waiting"} title="Strengths and gaps">
+                <div className="resume-field-grid">
+                  <ResumeField label="Strengths" value={latestEvaluation?.strengths.join(", ") || "Not analyzed"} />
+                  <ResumeField label="Gaps" value={latestEvaluation?.gaps.join(", ") || "Not analyzed"} />
+                </div>
+              </ResumeSection>
+
+              {latestDocument?.sections.length ? (
+                <ResumeSection number="04" status="Parsed" title="Detected sections">
+                  <ul className="resume-section-list">
+                    {latestDocument.sections.map((section) => (
+                      <li key={section}>{section}</li>
+                    ))}
+                  </ul>
+                </ResumeSection>
+              ) : null}
+            </section>
           </div>
-        ) : (
-          <div className="empty-state">No resume has been analyzed yet. Paste text above to create the first local result.</div>
-        )}
-      </section>
+        </section>
+      </div>
+    </main>
+  );
+}
+
+function ResumeSection({ number, status, title, children }: { number: string; status: string; title: string; children: ReactNode }) {
+  return (
+    <article className="resume-section">
+      <header>
+        <span>{number}</span>
+        <small>{status}</small>
+        <strong>{title}</strong>
+      </header>
+      {children}
+    </article>
+  );
+}
+
+function ResumeField({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="resume-field">
+      <span>{label}</span>
+      <strong>{value}</strong>
     </div>
   );
 }

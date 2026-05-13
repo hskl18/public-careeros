@@ -1,6 +1,7 @@
 import { performance } from "perf_hooks";
+import { isAllowedOllamaModelEndpoint, isOllamaCloudEndpoint } from "./api-security";
 import { stableId, nowIso } from "./id";
-import type { ModelProviderStatus, ModelTrace } from "./types";
+import type { ModelProviderStatus, ModelRuntimeSettings, ModelTrace } from "./types";
 
 export interface ModelStatusReport {
   status: ModelProviderStatus;
@@ -23,17 +24,28 @@ export interface ModelRuntimeOptions {
   enabled?: boolean;
   endpoint?: string;
   modelTag?: string;
+  settings?: ModelRuntimeSettings;
+  apiKey?: string;
   fetchFn?: typeof fetch;
   timeoutMs?: number;
 }
 
 function resolveRuntimeOptions(options: ModelRuntimeOptions = {}) {
   return {
-    enabled: options.enabled ?? process.env.CAREEROS_OLLAMA_ENABLED === "true",
-    endpoint: options.endpoint ?? process.env.CAREEROS_OLLAMA_BASE_URL ?? "http://localhost:11434",
-    modelTag: options.modelTag ?? process.env.CAREEROS_GEMMA_MODEL ?? "gemma3:4b",
+    enabled: options.enabled ?? options.settings?.enabled ?? process.env.CAREEROS_OLLAMA_ENABLED === "true",
+    endpoint: options.endpoint ?? options.settings?.endpoint ?? process.env.CAREEROS_OLLAMA_BASE_URL ?? "https://ollama.com",
+    modelTag: options.modelTag ?? options.settings?.modelTag ?? process.env.CAREEROS_GEMMA_MODEL ?? "gemma4:e4b",
+    apiKey: options.apiKey ?? process.env.OLLAMA_API_KEY ?? process.env.CAREEROS_OLLAMA_API_KEY,
     fetchFn: options.fetchFn ?? fetch,
-    timeoutMs: options.timeoutMs ?? 1800
+    timeoutMs: options.timeoutMs ?? 45_000
+  };
+}
+
+export function modelRuntimeOptions(settings: ModelRuntimeSettings): Pick<ModelRuntimeOptions, "enabled" | "endpoint" | "modelTag"> {
+  return {
+    enabled: settings.enabled,
+    endpoint: settings.endpoint,
+    modelTag: settings.modelTag
   };
 }
 
@@ -51,8 +63,23 @@ function parseHealthResponse(value: string | undefined) {
   }
 }
 
+export function ollamaApiUrl(endpoint: string, path: `/${string}`) {
+  const normalized = endpoint.replace(/\/$/, "");
+  const base = normalized.endsWith("/api") ? normalized : `${normalized}/api`;
+  return `${base}${path}`;
+}
+
+export function ollamaHeaders(endpoint: string, apiKey?: string, json = false): HeadersInit {
+  const headers: Record<string, string> = {};
+  if (json) headers["content-type"] = "application/json";
+  if (isOllamaCloudEndpoint(endpoint) && apiKey) {
+    headers.authorization = `Bearer ${apiKey}`;
+  }
+  return headers;
+}
+
 export async function checkOllamaStatus(options: ModelRuntimeOptions = {}): Promise<ModelStatusReport> {
-  const { enabled, endpoint, modelTag, fetchFn, timeoutMs } = resolveRuntimeOptions(options);
+  const { enabled, endpoint, modelTag, apiKey, fetchFn, timeoutMs } = resolveRuntimeOptions(options);
 
   if (!enabled) {
     return {
@@ -60,14 +87,37 @@ export async function checkOllamaStatus(options: ModelRuntimeOptions = {}): Prom
       endpoint,
       modelTag,
       installedModels: [],
-      diagnostic: "Ollama is disabled. Deterministic local processing remains available."
+      diagnostic:
+        "Ollama Cloud is disabled. Deterministic processing remains available. Next step: keep this disabled for first run, or add OLLAMA_API_KEY and enable model checks in Settings."
+    };
+  }
+
+  if (!isAllowedOllamaModelEndpoint(endpoint)) {
+    return {
+      status: "health_check_failed",
+      endpoint,
+      modelTag,
+      installedModels: [],
+      diagnostic:
+        "Model endpoint is blocked. CareerOS only connects to Ollama Cloud at https://ollama.com."
+    };
+  }
+
+  if (isOllamaCloudEndpoint(endpoint) && !apiKey) {
+    return {
+      status: "health_check_failed",
+      endpoint,
+      modelTag,
+      installedModels: [],
+      diagnostic:
+        "Ollama Cloud requires OLLAMA_API_KEY. Add it to .env.local, keep the endpoint as https://ollama.com, then retry Save and check."
     };
   }
 
   const started = performance.now();
   try {
-    const baseUrl = endpoint.replace(/\/$/, "");
-    const response = await fetchFn(`${baseUrl}/api/tags`, {
+    const response = await fetchFn(ollamaApiUrl(endpoint, "/tags"), {
+      headers: ollamaHeaders(endpoint, apiKey),
       signal: timeoutSignal(timeoutMs)
     });
     const latencyMs = Math.round(performance.now() - started);
@@ -77,7 +127,7 @@ export async function checkOllamaStatus(options: ModelRuntimeOptions = {}): Prom
         endpoint,
         modelTag,
         installedModels: [],
-        diagnostic: `Ollama tags endpoint returned HTTP ${response.status}.`,
+        diagnostic: `Ollama tags endpoint returned HTTP ${response.status}. Next step: verify OLLAMA_API_KEY, the endpoint, or save Settings with model checks disabled.`,
         latencyMs
       };
     }
@@ -91,25 +141,37 @@ export async function checkOllamaStatus(options: ModelRuntimeOptions = {}): Prom
         endpoint,
         modelTag,
         installedModels,
-        diagnostic: `Ollama is reachable but ${modelTag} is not installed. Run: ollama pull ${modelTag}`,
+        diagnostic: `Ollama is reachable but ${modelTag} is not listed for this endpoint/account. Next step: choose an available Ollama Cloud model tag in Settings.`,
         latencyMs
       };
     }
 
-    const healthResponse = await fetchFn(`${baseUrl}/api/generate`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        model: modelTag,
-        prompt: "Return exactly this JSON and nothing else: {\"ok\":true}",
-        stream: false,
-        options: {
-          temperature: 0,
-          num_predict: 20
-        }
-      }),
-      signal: timeoutSignal(timeoutMs)
-    });
+    let healthResponse: Response;
+    try {
+      healthResponse = await fetchFn(ollamaApiUrl(endpoint, "/generate"), {
+        method: "POST",
+        headers: ollamaHeaders(endpoint, apiKey, true),
+        body: JSON.stringify({
+          model: modelTag,
+          prompt: "Return exactly this JSON and nothing else: {\"ok\":true}",
+          stream: false,
+          options: {
+            temperature: 0,
+            num_predict: 20
+          }
+        }),
+        signal: timeoutSignal(timeoutMs)
+      });
+    } catch {
+      return {
+        status: "health_check_failed",
+        endpoint,
+        modelTag,
+        installedModels,
+        diagnostic: `Ollama is reachable and ${modelTag} is available, but the bounded health prompt did not finish within ${Math.round(timeoutMs / 1000)}s. Next step: try a smaller model tag or retry Save and check.`,
+        latencyMs: Math.round(performance.now() - started)
+      };
+    }
     const totalLatencyMs = Math.round(performance.now() - started);
     if (!healthResponse.ok) {
       return {
@@ -117,7 +179,7 @@ export async function checkOllamaStatus(options: ModelRuntimeOptions = {}): Prom
         endpoint,
         modelTag,
         installedModels,
-        diagnostic: `Ollama health prompt returned HTTP ${healthResponse.status}.`,
+        diagnostic: `Ollama health prompt returned HTTP ${healthResponse.status}. Next step: verify ${modelTag} is available to this Ollama Cloud account, or save Settings with model checks disabled.`,
         latencyMs: totalLatencyMs
       };
     }
@@ -130,8 +192,8 @@ export async function checkOllamaStatus(options: ModelRuntimeOptions = {}): Prom
       modelTag,
       installedModels,
       diagnostic: healthy
-        ? "Ollama is reachable, the configured model is installed, and the bounded health prompt passed."
-        : "Ollama responded, but the bounded health prompt did not return the expected JSON.",
+        ? "Ollama Cloud is reachable, the configured model is available, and the bounded health prompt passed. Next step: model-backed import analysis can run, but output still goes to review first."
+        : "Ollama responded, but the bounded health prompt did not return the expected JSON. Next step: verify the selected model and retry, or use deterministic mode.",
       latencyMs: totalLatencyMs
     };
   } catch {
@@ -140,7 +202,7 @@ export async function checkOllamaStatus(options: ModelRuntimeOptions = {}): Prom
       endpoint,
       modelTag,
       installedModels: [],
-      diagnostic: `Ollama is not reachable at ${endpoint}. Leave it disabled or start Ollama before enabling model-backed processing.`
+      diagnostic: `Ollama is not reachable at ${endpoint}. Next step: verify network/API key, or leave model checks disabled for deterministic mode.`
     };
   }
 }

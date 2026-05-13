@@ -12,6 +12,14 @@
 .dev/
 .tmp/
 coverage/
+playwright-report/
+test-results/
+screenshots/
+
+# Local agent/workspace notes
+CLAUDE.md
+.claude/
+.codex/
 
 # JS/Next
 node_modules/

@@ -1,4 +1,4 @@
-name: Public package checks
+name: CareerOS demo checks
 
 on:
   pull_request:
@@ -15,8 +15,8 @@ defaults:
     shell: bash
 
 jobs:
-  safety:
-    name: Safety scan and local runtime checks
+  check:
+    name: Next.js demo checks
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -36,11 +36,24 @@ jobs:
           node-version: 22
           cache: pnpm
 
-      - name: Run public safety check
-        run: bash scripts/public-safety-check.sh
-
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Public safety grep
+        run: |
+          if find . -name ".env" -o -name ".env.*" | grep -v '^./.env.example$' | grep -q .; then
+            echo "Do not commit real env files." >&2
+            exit 1
+          fi
+          if grep -RInE '/Users/ice|console\.neon\.tech|railway\.app/project|vercel\.com/.+/.+|sk-[A-Za-z0-9_-]{20,}|AIza[0-9A-Za-z_-]{20,}' . \
+            --exclude-dir=.git \
+            --exclude-dir=node_modules \
+            --exclude-dir=.next \
+            --exclude-dir=.careeros-data \
+            --exclude-dir=.artifacts \
+            --exclude=public-ci.yml; then
+            exit 1
+          fi
 
       - name: Type check
         run: pnpm check
@@ -50,16 +63,3 @@ jobs:
 
       - name: Build
         run: pnpm build
-
-      - name: Verify docs links are local or public
-        run: |
-          if grep -RInE '/Users/ice|console\\.neon\\.tech|railway\\.app/project|vercel\\.com/.+/.+' . \
-            --exclude-dir=.git \
-            --exclude-dir=node_modules \
-            --exclude-dir=.next \
-            --exclude-dir=.careeros-data \
-            --exclude-dir=.artifacts \
-            --exclude=public-ci.yml \
-            --exclude=public-safety-check.sh; then
-            exit 1
-          fi

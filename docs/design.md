@@ -1,132 +1,198 @@
 # Product Design
 
-Last updated: 2026-05-08
+Last updated: 2026-05-12
+
+For the one-line description and quickstart, see the
+[README](../README.md). For runtime/agent layers, see
+[architecture.md](architecture.md). This doc covers **product positioning,
+surface area, and UX direction**.
 
 ## Positioning
 
-CareerOS is a local-first career workflow product for individual job seekers.
-The public version starts with one clear job: make recruiting evidence visible,
-structured, and correctable without requiring a hosted account, Gmail OAuth, or
-cloud infrastructure.
-
-The hosted Other Candidate product can remain Gmail-first. The open-source
-CareerOS base should preserve the same product principles while making the first
-run provider-free.
+CareerOS is a multi-agent job-mailbox pipeline for individual job seekers. The
+public version's job is to make the pipeline **visible, inspectable, and
+correctable** without a hosted account, Gmail OAuth, or cloud infrastructure.
 
 The product is intentionally narrow:
 
-- seeded demo data and local import
+- clean Gmail-first workspace and local import
 - one local workspace user
-- one operational dashboard
-- application pipeline, review queue, resume intelligence, notifications, and
-  settings
-- optional Gmail connector status without OAuth credential storage
-- optional Ollama/Gemma analysis after explicit local setup
+- one agentic pipeline console
+- application pipeline, review queue, resume intelligence, notifications,
+  agent contracts, settings
+- optional Gmail readonly sync through a local OAuth token file
+- optional Ollama Cloud/Gemma analysis after explicit env setup
+- provider-adapter registry surfaces for roadmap advanced/BYOK model paths
+- one fixed light visual system for the public demo
 
-The goal is not to look like a throwaway prototype. It should feel like a small
-but durable product foundation that can keep growing.
+The goal is to feel like a small but durable foundation, not a throwaway
+prototype.
 
-## Primary User
+## Primary user
 
-- An individual job seeker.
-- Someone actively applying and interviewing.
-- Someone who receives meaningful recruiting traffic in email, files, or manual
-  notes.
-- Someone who wants automation but still wants final control when the system is
-  uncertain.
+An individual job seeker actively applying and interviewing — someone who
+receives meaningful recruiting traffic in email, files, or manual notes, and
+who wants automation while keeping final control when the system is uncertain.
 
-## Core Product Promise
+## Pain signals (from public job-search discussions)
 
-CareerOS should turn unstructured recruiting evidence into:
+CareerOS targets the operational mess that recurs in r/cscareerquestions and
+similar communities:
 
-- application records
-- stage changes
-- pending actions
-- reminders
-- notifications
+- The inbox already contains the truth, but candidates manually rebuild it in
+  spreadsheets.
+- After 50–100 applications, rows lose context: JD link, resume version,
+  source, recruiter, salary/location, and the *reason* for the next follow-up.
+- Recruiter emails arrive without enough context for the candidate to remember
+  which role they refer to.
+- Stale follow-up reminders become noise after an OA, recruiter reply,
+  interview, rejection, or offer.
+- Privacy-first local tracking is a strong trust signal because job-search
+  email is sensitive.
+
+## Core promise
+
+CareerOS turns unstructured recruiting evidence into:
+
+- application records and stage changes
+- pending actions and reminders
+- in-app notifications
 - resume feedback
 - a readable timeline of what changed and why
 
-The user should be able to trust the system for routine updates and still
-correct it quickly when needed.
+The user trusts the system for routine updates and corrects it quickly when
+needed.
 
-## Product Principles
+## Product principles
 
 - Keep the product small and operationally clear.
-- Prefer visible automation over hidden automation.
+- Prefer **visible** automation over hidden automation.
 - Keep manual correction close to the automated workflow.
-- Preserve a clean boundary between evidence and structured application state.
-- Make model-backed analysis additive, not foundational.
+- Preserve a clean boundary between **evidence** and **structured state**.
+- Model-backed analysis is additive, not foundational.
 - Never require Gmail, hosted auth, or a model download for first-run value.
 
-## Current Surface Area
+## Surface area
 
-### Dashboard
+### Pipeline console (`/`)
 
-The dashboard is the operational home screen. It should answer:
+The operational home screen and first judge-facing impression. It should show
+the mailbox-to-state loop immediately, not only summary metrics:
 
-- what is in the pipeline
-- what needs action now
-- what changed recently
-- whether local data, connectors, and model status are healthy
-- which review items are blocking automation
+- the six agent layers: mailbox triage, workflow extraction,
+  evidence/review, resume/context, reminders/notifications, and model router
+- Gmail or sanitized judge/demo mailbox evidence moving into an extracted
+  application update
+- Gemma via Ollama Cloud as the primary optional model path
+- deterministic fallback as a valid first-run state
+- review gates before durable application-state mutation
+- notifications and application records as derived operational outputs
 
-Current sections include pipeline state, seeded/local import activity, reminders,
-recent events, review blocks, model traces, and local runtime status.
+### Judge demo (`/judge-demo`)
 
-### Applications
+Interactive hackathon surface — not a marketing landing page. It must
+communicate within seconds: *CareerOS is a private-workspace multi-agent mailbox
+pipeline; Gemma via Ollama Cloud is the primary model path; review gates protect
+durable state.*
 
-The applications page shows the durable pipeline state. It should keep evidence
-near the application record so the user can inspect why a stage, reminder, or
-notification exists.
+Preferred composition:
 
-Current workflows include seeded applications, manual/local import, application
-events, evidence snippets, reminders, and review-gated updates.
+- left/top: multi-agent pipeline stages
+- center: fake mailbox thread → extracted application update
+- right: model trace, review gate, notification output
+- bottom: env setup and provider options
 
-### Manual Review Queue
+The extracted update should include the fields candidates lose in
+spreadsheets: company, role, source, JD link, resume version, cover-letter
+version, recruiter contact, location, salary range, deadline, next action,
+notes, confidence.
 
-The review page exists because email and model understanding are never perfect.
+### Applications (`/applications`)
 
-It should let the user:
+Durable pipeline state with evidence near each application record. Supports
+both durable detail and fast scanning:
+
+- compact bucket views: applied, waiting, followed up, assessment, interview,
+  rejected, offer, ghosted
+- real application detail routes at `/applications/[id]` that show company,
+  role, stage, next action, deadline/follow-up, spreadsheet-replacement fields,
+  timeline, bounded evidence, mailbox thread relationships, review blockers,
+  reminders, and notification context
+- evidence-backed dossier strip summarizing bounded snippets, source message
+  ids, matched mailbox threads, review-gate status, and operating queue context
+- evidence cards keeping JD link, resume version, source, recruiter contact,
+  salary/location, notes
+- relationship hints between mailbox thread, recruiter, company, role, resume
+- thread-level evidence inspection: mailbox message snippets, source message
+  ids, extracted update, confidence, source label, and owning application
+- board/lane scanning remains secondary to the pipeline and evidence surfaces
+
+### Manual review queue (`/review`)
+
+Email and model understanding are never perfect. The queue lets the user:
 
 - accept a suggested update
-- dismiss an update that should not mutate the pipeline
-- correct key fields before applying a change
-- see confidence, source, and model trace metadata before deciding
+- dismiss an update that should not mutate state
+- correct key fields before applying
+- filter and sort by status, company, source, confidence band, deterministic
+  vs model-backed trace, newest/oldest, and confidence order
 
-Low-confidence, risky, invalid, or model-backed updates should be review-visible
+Low-confidence, risky, invalid, or model-backed updates are review-visible
 before they affect application state.
 
-### Resume
+### Resume (`/resume`)
 
-The resume page exists to connect the candidate's material back to the pipeline.
-The first public version supports pasted text and deterministic evaluation so it
-works without a local model.
+Connects candidate material back to the pipeline. First public version
+supports pasted text and deterministic evaluation, so it works without a model
+key. When Gemma through Ollama Cloud is explicitly enabled and passes readiness checks, the
+resume surface labels Gemma-backed feedback separately from deterministic
+fallback. Invalid, risky, or low-confidence model output is shown as blocked
+instead of silently replacing the deterministic baseline.
 
-Future model-backed resume analysis should keep the same reviewable evidence
-boundary used by import analysis.
+The top of the dossier keeps the first-time path visible: paste resume text,
+analyze, inspect deterministic or Gemma-backed output, then correct locally.
 
-### Notifications
+### Notifications (`/notifications`)
 
-The notification window is an in-app operating surface, not a marketing feature.
-It should surface recruiter replies, due dates, follow-ups, review blocks,
-connector health, and model status with stable dedupe keys.
+In-app operating surface, not a marketing feature. Surfaces recruiter replies,
+due dates, follow-ups, review blocks, connector health, and model status with
+stable dedupe keys. Reminder notifications close when a later-stage event
+makes the old follow-up stale.
 
-### Settings
+### Settings (`/settings`)
 
-Settings should make local runtime state explicit:
+Makes runtime state explicit:
 
 - data reset and persistence location
 - optional connector state
-- Ollama/Gemma status
-- disabled, unreachable, missing-model, and ready model outcomes
+- Ollama/Gemma status (disabled / unreachable / model-missing / ready)
+- Ollama Cloud setup controls (endpoint, tag, save, check)
+- env-key guidance — never an in-app secret field
+- provider roadmap visibility through the same registry used by the judge demo;
+  implemented paths are deterministic fallback and Gemma via Ollama Cloud, while
+  BYOK/advanced runtime adapters remain labeled as roadmap only
+- one fixed light theme so the public demo stays visually consistent for
+  judges and screenshots
+- sub-nav on `/settings` switches *view*, not anchor — `?section=` query
+  param swaps which section renders. Defaults to `model`.
 
-## UX Direction
+### Agents (`/agents`)
 
-The UX should feel like an operational console rather than a generic SaaS CRUD
-app.
+Product-facing operating contract for the pipeline. This page should make the
+system legible as agents, not as a generic tracker:
 
-Design intent:
+- each agent's purpose
+- alignment with the full CareerOS mailbox / resume / orchestration families
+- prompt/input boundary
+- local memory boundary
+- can-do and cannot-do rules
+- cost/runtime boundary
+- latest compact trace, review gate count, and model trace context
+
+## UX direction
+
+The UX should feel like an **agentic pipeline console**, not a generic SaaS
+CRUD app:
 
 - strong hierarchy
 - high-signal metrics
@@ -134,9 +200,59 @@ Design intent:
 - minimal navigation depth
 - dense but readable workflow panels
 - visible confidence and review metadata
-- direct action buttons instead of hidden menus
+- direct action buttons rather than hidden menus
+- never rely on color alone for status
 
-## What The Product Does Not Try To Solve Yet
+## App shell and scroll model
+
+One integrated app shell across pipeline, applications, analytics, resume,
+review, notifications, settings, and judge demo.
+
+### Fixed-shell routes (desktop ≥768px)
+
+These routes keep the document and shell from page-scrolling; long surfaces
+scroll inside their own sections instead. Enforced by
+`tests/e2e/app-smoke.spec.ts` (`route.fixedShell: true`).
+
+| Route | Fixed top region | Section-internal scroll |
+| --- | --- | --- |
+| `/` | hero card (`home-agent-console workspace-fixed-top`) — eyebrow + state-aware CTA + 6-agent strip + metric tiles + status row | activity log + needs-attention columns (each a `workspace-scroll-region`) |
+| `/applications` | first stack row — hero + metric strip | `applications-scroll-region` wrapping stage board + table + thread-evidence; selected rail scrolls independently |
+| `/analytics` | (none — `analytics-workspace` is the scroll region) | the workspace itself scrolls |
+| `/resume` | dossier head | `resume-agent-rail` and `resume-dossier-content` each scroll inside the dossier body |
+
+### Page-scrolling routes
+
+`/review`, `/notifications`, `/settings`, and `/judge-demo`
+allow normal vertical document scroll because their content is deep enough
+that internal scrolling fights the user. They still use the same workspace
+shell, just without the fixed-shell height constraints. `/settings` adds an
+in-page sub-nav for fast jumping.
+
+### Rules
+
+**Desktop (≥768px)**
+
+- Document and `<body>` don't page-scroll on fixed-shell routes.
+- Each fixed-shell route keeps a `workspace-fixed-top` region visible at
+  the top.
+- Long surfaces declare their own overflow with `workspace-scroll-region`,
+  `shell-scroll-region`, or a route-specific equivalent.
+- Don't hard-code `min-height` on a panel that lives inside a fixed shell;
+  scope tall minimums to mobile only.
+
+**Mobile (<768px)**
+
+- Normal vertical document scroll.
+- Wide tables keep horizontal overflow.
+- Controls wrap rather than overlap.
+
+New routes start from `app-scroll-main` + `workspace-shell` and put
+scrollable content inside `workspace-scroll-region`. If the route is
+fixed-shell, add `fixed-workspace` to the shell and mark the top region
+with `workspace-fixed-top`.
+
+## Out of scope (for now)
 
 - multi-user collaboration
 - recruiter CRM
@@ -144,24 +260,14 @@ Design intent:
 - outbound automation
 - hosted account management
 - production Gmail OAuth and token storage
-- advanced analytics and reporting workflows
+- advanced analytics and reporting
 
-Those are later layers, not requirements for the current local-first foundation.
+These are later layers, not requirements for the current private-workspace
+foundation. See [roadmap.md](roadmap.md) for sequencing.
 
-## Near-Term Design Expansion
+## Long-term constraint
 
-The most natural next product steps are:
+As CareerOS grows, one rule must hold:
 
-- a real safe Gmail connector with encrypted credential storage
-- richer review queue filtering and prioritization
-- thread-level evidence views and summaries
-- reminder completion history
-- analytics trends over time
-- local export/delete controls for user-owned data
-
-## Long-Term Design Constraint
-
-As CareerOS grows, the product should still preserve one rule:
-
-automation can suggest and update, but the user must always be able to inspect,
-correct, and override the workflow state.
+> Automation can suggest and update, but the user must always be able to
+> inspect, correct, and override the workflow state.
