@@ -195,6 +195,7 @@ pnpm test      # Vitest
 pnpm build     # production build
 pnpm smoke:browser # headless Chrome route/layout smoke
 pnpm smoke:ollama  # optional live Ollama Cloud smoke when .env.local has OLLAMA_API_KEY
+pnpm ci:public # public CI gate without requiring provider secrets
 pnpm release:check # public safety + check + test + build + browser + Ollama + diff check
 pnpm run ci    # check + test + build
 ```

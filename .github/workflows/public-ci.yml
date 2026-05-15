@@ -39,27 +39,18 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Public safety grep
+      - name: Public no-key release gate
+        run: pnpm ci:public
+
+      - name: Optional Ollama Cloud smoke
+        env:
+          OLLAMA_API_KEY: ${{ secrets.OLLAMA_API_KEY }}
+          CAREEROS_OLLAMA_ENABLED: "true"
+          CAREEROS_OLLAMA_BASE_URL: "https://ollama.com"
+          CAREEROS_GEMMA_MODEL: "gemma4:31b"
         run: |
-          if find . -name ".env" -o -name ".env.*" | grep -v '^./.env.example$' | grep -q .; then
-            echo "Do not commit real env files." >&2
-            exit 1
+          if [ -z "${OLLAMA_API_KEY:-}" ]; then
+            echo "OLLAMA_API_KEY secret is not configured; skipping live Ollama Cloud smoke."
+            exit 0
           fi
-          if grep -RInE '/Users/ice|console\.neon\.tech|railway\.app/project|vercel\.com/.+/.+|sk-[A-Za-z0-9_-]{20,}|AIza[0-9A-Za-z_-]{20,}' . \
-            --exclude-dir=.git \
-            --exclude-dir=node_modules \
-            --exclude-dir=.next \
-            --exclude-dir=.careeros-data \
-            --exclude-dir=.artifacts \
-            --exclude=public-ci.yml; then
-            exit 1
-          fi
-
-      - name: Type check
-        run: pnpm check
-
-      - name: Unit tests
-        run: pnpm test
-
-      - name: Build
-        run: pnpm build
+          pnpm smoke:ollama

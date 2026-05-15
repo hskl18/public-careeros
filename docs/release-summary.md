@@ -216,6 +216,17 @@ browser smoke, Ollama Cloud smoke, and whitespace checks.
 local `OLLAMA_API_KEY`, it fails closed even though the app and `/judge-demo`
 still run without credentials.
 
+GitHub Actions runs the no-key public gate with:
+
+```bash
+pnpm ci:public
+```
+
+That covers public-safety scan, TypeScript, unit tests, production build,
+browser smoke, and whitespace checks without requiring repository secrets. The
+workflow runs `pnpm smoke:ollama` only when the `OLLAMA_API_KEY` secret is
+configured.
+
 ## Post-Release Follow-Up
 
 These are not needed for the public hackathon demo, but are the next real

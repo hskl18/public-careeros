@@ -88,6 +88,9 @@ return `ready`; without a key, it exits non-zero with a bounded diagnostic by
 design. This is correct for the maintainer release gate. The app, browser
 smoke, and judge demo still run without model credentials.
 
+GitHub Actions uses `pnpm ci:public` for the no-key public gate and runs
+`pnpm smoke:ollama` only when the repository has an `OLLAMA_API_KEY` secret.
+
 ## Post-Release Follow-Up
 
 - Run one sanitized real Gmail OAuth sync before recording the final video if a

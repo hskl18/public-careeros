@@ -34,8 +34,9 @@
     "test": "vitest run",
     "smoke:browser": "tsx tools/browser-smoke.ts",
     "smoke:ollama": "tsx tools/ollama-cloud-smoke.ts",
-    "release:check": "bash scripts/public-safety-check.sh && pnpm check && pnpm test && pnpm build && pnpm smoke:browser && pnpm smoke:ollama && git diff --check",
-    "ci": "pnpm check && pnpm test && pnpm build"
+    "ci": "pnpm check && pnpm test && pnpm build",
+    "ci:public": "bash scripts/public-safety-check.sh && pnpm check && pnpm test && pnpm build && pnpm smoke:browser && git diff --check",
+    "release:check": "pnpm ci:public && pnpm smoke:ollama"
   },
   "dependencies": {
     "next": "^15.5.18",
