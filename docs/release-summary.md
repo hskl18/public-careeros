@@ -1,10 +1,10 @@
 # CareerOS Public Release Summary
 
-Last updated: 2026-05-12
+Last updated: 2026-05-15
 
 This is the current public release summary for the lightweight CareerOS repo.
-It records the product direction, runtime boundary, security hardening, and
-validation status after the repo was cleaned up for the Kaggle Gemma 4 Good
+It records the judge-facing demo boundary, runtime contract, security
+hardening, proof artifacts, and validation status for the Kaggle Gemma 4 Good
 hackathon.
 
 ## Product Positioning
@@ -20,9 +20,12 @@ structured application state with a review-gated workflow:
 6. Model router/provider layer
 
 The hosted product built on top is **Other Candidate** at `careeroc.com`. This
-repo is the open-source demo: one Next.js app, local workspace state, optional
-Gmail readonly sync, optional Gemma via Ollama Cloud, and no separate backend
-stack.
+repo is the limited public hackathon demo/source package: one Next.js app,
+local workspace state, optional Gmail readonly sync, optional Gemma via Ollama
+Cloud, deterministic fallback, and no separate backend stack.
+
+Current judge-demo completion score: **10/10 for the public Kaggle/Gemma
+demo scope**. This does not claim hosted Other Candidate production parity.
 
 ## Runtime Simplification
 
@@ -32,10 +35,10 @@ The repo was reduced to a simple Next.js product:
 - No Docker runtime.
 - No `dev-up` / `dev-down` scripts.
 - No C# source export.
-- No local Ollama server requirement.
+- No desktop Ollama server requirement.
 - No local model download.
 - One fixed light theme.
-- Public routes are canonical only; duplicate `/app/*` aliases were removed.
+- Public routes are canonical only; duplicate legacy app aliases were removed.
 
 The app starts as a clean workspace. Real product use begins by connecting
 readonly Gmail and syncing recruiting mail; the sanitized sample story stays in
@@ -58,7 +61,7 @@ Required env for model-backed runs:
 ```bash
 CAREEROS_OLLAMA_ENABLED=true
 CAREEROS_OLLAMA_BASE_URL=https://ollama.com
-CAREEROS_GEMMA_MODEL=gemma4:e4b
+CAREEROS_GEMMA_MODEL=gemma4:31b
 OLLAMA_API_KEY=your-ollama-cloud-api-key
 ```
 
@@ -69,11 +72,12 @@ review before state changes.
 Added smoke command:
 
 ```bash
-OLLAMA_API_KEY=your-ollama-cloud-api-key pnpm smoke:ollama
+pnpm smoke:ollama
 ```
 
-Without a key this fails closed with a clear diagnostic. With a real key it is
-the direct live smoke test for Ollama Cloud readiness.
+The smoke command reads `.env.local` when present. Without a key this fails
+closed with a clear diagnostic. With a real key it is the direct live smoke
+test for Ollama Cloud readiness.
 
 ## Agent Safety
 
@@ -107,7 +111,11 @@ Gmail is optional and readonly:
 - Key material comes from `CAREEROS_TOKEN_SECRET`,
   `CAREEROS_SECRET_KEY`, or `CAREEROS_GMAIL_CLIENT_SECRET`.
 - Workspace export/import rejects OAuth/token/provider-key fields.
-- Synced Gmail messages are converted to bounded recruiting import records.
+- Workspace export writes connector state through an explicit public-field
+  whitelist before serializing JSON.
+- Synced Gmail messages are fetched as readonly metadata/snippets and converted
+  to bounded recruiting import records. Full Gmail message bodies are not
+  requested or persisted.
 
 Tests open the token file and verify it does not contain plaintext
 `access-token` or `refresh-token`.
@@ -131,45 +139,90 @@ claims.
 Current public docs:
 
 - `README.md` — first-run onboarding and public product summary
+- `SECURITY.md` — local data, OAuth, model-key, and public-release boundaries
 - `docs/architecture.md` — runtime, data, and agent boundaries
 - `docs/api-spec.md` — route handler API surface
+- `docs/browser-smoke.md` — browser smoke coverage and screenshot proof set
 - `docs/design.md` — product surface and UX direction
 - `docs/hackathon-writeup.md` — Kaggle Gemma 4 Good narrative
-- `docs/provider-research.md` — short provider roadmap
+- `docs/product-completion-plan.md` — current judge-demo completion status
 - `docs/roadmap.md` — shipped phases and future work
 - `docs/release-summary.md` — this summary
 
 Removed or folded:
 
-- scattered implementation prompt docs
+- root coding-agent guidance doc
+- implementation prompt docs
 - broad local-first planning docs
-- TODO doc
-- browser-smoke doc
-- long provider research note
+- stale TODO docs
+- long provider research note; the compact provider roadmap now lives in
+  `docs/roadmap.md`
+
+## Judge Proof Artifacts
+
+`pnpm smoke:browser` generates sanitized desktop/mobile screenshots under:
+
+```text
+test-results/browser-smoke/
+```
+
+Important proof screenshots:
+
+- `seeded-desktop-judge-demo.png` / `seeded-mobile-judge-demo.png`
+- `empty-desktop-home.png` / `empty-mobile-home.png`
+- `seeded-desktop-applications.png`
+- `seeded-desktop-applications-app_atlas.png`
+- `seeded-desktop-review.png`
+- `empty-desktop-settings-section-gmail.png`
+- `seeded-desktop-agents.png`
+
+These files are ignored by git and should be curated into the Kaggle media
+package only after a final privacy check.
 
 ## Current Validation
 
 Latest local validation:
 
 ```bash
+bash scripts/public-safety-check.sh
 pnpm check
 pnpm test
 pnpm build
+pnpm smoke:browser
+pnpm smoke:ollama
 git diff --check
 ```
 
-Current unit coverage: `70/70` tests passing.
+Current unit coverage after route-handler hardening: `81/81` tests passing.
 
-`pnpm smoke:ollama` exists as a real key-backed Cloud smoke test and correctly
-fails without `OLLAMA_API_KEY`.
+`pnpm smoke:browser` passes and covers seeded plus clean workspace
+desktop/mobile render, required judge/demo copy, no horizontal overflow, no
+legacy links, and screenshot generation for the main judge routes.
 
-## Remaining Non-Blocking Follow-Up
+`pnpm smoke:ollama` exists as a real key-backed Cloud smoke test, reads
+`.env.local` when present, and correctly fails closed without `OLLAMA_API_KEY`.
+With the local `OLLAMA_API_KEY` and available `gemma4:31b` model, it returned
+`status=ready`; otherwise it exits non-zero with a bounded diagnostic.
+
+One-command release gate:
+
+```bash
+pnpm release:check
+```
+
+This chains public-safety scan, TypeScript, unit tests, production build,
+browser smoke, Ollama Cloud smoke, and whitespace checks.
+`pnpm smoke:ollama` is part of the maintainer release gate; without a valid
+local `OLLAMA_API_KEY`, it fails closed even though the app and `/judge-demo`
+still run without credentials.
+
+## Post-Release Follow-Up
 
 These are not needed for the public hackathon demo, but are the next real
 hardening steps for hosted product parity:
 
-- Run `pnpm smoke:ollama` with a real Ollama Cloud key and record the result.
-- Run a real Gmail OAuth sync against a sanitized test mailbox.
+- Run a real Gmail OAuth sync against a sanitized disposable mailbox before
+  recording the final video, if available.
 - Add a larger mailbox eval fixture set from fake but realistic recruiter
   threads.
 - Add background job scheduling only if the hosted product needs continuous

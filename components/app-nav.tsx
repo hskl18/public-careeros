@@ -7,7 +7,6 @@ const navigation = [
   { href: "/", label: "Pipeline" },
   { href: "/applications", label: "Applications" },
   { href: "/agents", label: "Agents" },
-  { href: "/analytics", label: "Analytics" },
   { href: "/resume", label: "Resume" }
 ];
 

@@ -10,9 +10,16 @@ import {
 } from "@/lib/connectors";
 import { agentOperatingContracts, getAgentOperatingContract } from "@/lib/agent-contracts";
 import { deriveAgentPipelineSnapshot, runMailboxTriageAgent, runWorkflowExtractionAgent } from "@/lib/agent-pipeline";
-import { deriveAnalyticsSummary } from "@/lib/analytics";
+import { deriveAnalyticsSummary } from "@/lib/metrics";
 import { deriveEvidenceRelationshipViews } from "@/lib/evidence-queries";
-import { exchangeGmailCode, hasGmailToken, syncGmailRecruitingMail } from "@/lib/gmail-local";
+import { stableId } from "@/lib/id";
+import {
+  exchangeGmailCode,
+  gmailOAuthSetupDiagnostic,
+  gmailOAuthState,
+  hasGmailToken,
+  syncGmailRecruitingMail
+} from "@/lib/gmail-local";
 import { checkOllamaStatus } from "@/lib/model-status";
 import { deriveNotifications } from "@/lib/notifications";
 import {
@@ -44,7 +51,9 @@ import { POST as postWorkspaceImport } from "@/app/api/local-data/import/route";
 import { POST as postDeleteLocalData } from "@/app/api/local-data/delete/route";
 import { GET as getConnectors } from "@/app/api/connectors/route";
 import { POST as postGmailConnector } from "@/app/api/connectors/gmail/[action]/route";
+import { GET as getGmailCallback } from "@/app/api/connectors/gmail/callback/route";
 import { GET as getDebugStateSnapshot } from "@/app/api/debug/state/route";
+import { POST as postResume } from "@/app/api/resume/route";
 import { workspaceImportConfirmation } from "@/lib/workspace-import";
 
 function restoreEnv(name: string, value: string | undefined) {
@@ -53,6 +62,15 @@ function restoreEnv(name: string, value: string | undefined) {
   } else {
     process.env[name] = value;
   }
+}
+
+function setNodeEnvForTest(value: string) {
+  Object.defineProperty(process.env, "NODE_ENV", {
+    value,
+    configurable: true,
+    writable: true,
+    enumerable: true
+  });
 }
 
 function workspaceImportRequest(state: unknown, confirm = workspaceImportConfirmation) {
@@ -144,6 +162,9 @@ describe("local deterministic pipeline", () => {
     expect(next.events.some((event) => event.applicationId === application?.id)).toBe(true);
     expect(next.agentRuns.some((run) => run.agent === "mailbox_triage" && run.inputRef === "test:cedar")).toBe(true);
     expect(next.agentRuns.some((run) => run.agent === "workflow_extraction" && run.inputRef === "test:cedar")).toBe(true);
+    expect(next.importJobs[0]?.source).toBe("json");
+    expect(next.auditEvents[0]?.action).toBe("import.processed");
+    expect(JSON.stringify(next.auditEvents[0])).not.toMatch(/raw|token|secret/i);
   });
 
   it("preserves JD, resume, source, recruiter contact, salary, location, and notes from imports", () => {
@@ -229,6 +250,59 @@ describe("local deterministic pipeline", () => {
       restoreEnv("CAREEROS_OLLAMA_ENABLED", previousOllamaEnabled);
       setStateRepository(new MemoryStateRepository());
     }
+  });
+
+  it("rejects oversized import payloads and overlong recruiting snippets", async () => {
+    setStateRepository(new MemoryStateRepository(createSeedState()));
+
+    const tooLargeByHeader = await postImport(
+      new Request("http://localhost/api/import", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "content-length": "250001"
+        },
+        body: JSON.stringify({ records: [] })
+      })
+    );
+    expect(tooLargeByHeader.status).toBe(413);
+
+    const overlongText = await postImport(
+      new Request("http://localhost/api/import", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          records: [
+            {
+              company: "Cap Check",
+              role: "Backend Engineer",
+              sourceLabel: "cap:gmail",
+              text: "x".repeat(4001)
+            }
+          ]
+        })
+      })
+    );
+    const state = await readState();
+
+    expect(overlongText.status).toBe(400);
+    expect(state.applications.some((item) => item.company === "Cap Check")).toBe(false);
+
+    const oversizedWithoutHeader = await postImport(
+      new Request("http://localhost/api/import", {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          company: "Raw Cap",
+          role: "Backend Engineer",
+          sourceLabel: "cap:raw-form",
+          text: "Recruiter reply detected after application receipt.",
+          notes: "n".repeat(251_000)
+        })
+      })
+    );
+
+    expect(oversizedWithoutHeader.status).toBe(413);
   });
 
   it("routes ambiguous or risky changes through review before mutation", () => {
@@ -433,9 +507,9 @@ describe("review decisions", () => {
       {
         enabled: true,
         apiKey: "test-key",
-        modelTag: "gemma4:e4b",
+        modelTag: "gemma4:31b",
         fetchFn: async (input) => {
-          if (String(input).endsWith("/api/tags")) return Response.json({ models: [{ name: "gemma4:e4b" }] });
+          if (String(input).endsWith("/api/tags")) return Response.json({ models: [{ name: "gemma4:31b" }] });
           generateCalls += 1;
           if (generateCalls === 1) return Response.json({ response: "{\"ok\":true}" });
           return Response.json({
@@ -487,6 +561,8 @@ describe("analytics summary", () => {
     expect(analytics.metrics.reviewBlockedCount).toBeGreaterThan(0);
     expect(analytics.companyBreakdown.some((item) => item.label === "Cedar Systems")).toBe(true);
     expect(analytics.trends.length).toBeGreaterThan(0);
+    expect(analytics.audit.total).toBeGreaterThan(0);
+    expect(analytics.audit.recent[0]?.summary).not.toMatch(/token|secret|raw/i);
   });
 
   it("derives reply, interview, offer rates and status buckets from local events", () => {
@@ -679,7 +755,7 @@ describe("notifications", () => {
         {
           id: "trace_model_missing",
           provider: "ollama",
-          modelTag: "gemma4:e4b",
+          modelTag: "gemma4:31b",
           status: "model_missing",
           task: "model-provider-status",
           diagnostic: "Selected model missing.",
@@ -704,7 +780,7 @@ describe("notifications", () => {
         {
           id: "trace_ready",
           provider: "ollama",
-          modelTag: "gemma4:e4b",
+          modelTag: "gemma4:31b",
           status: "ready",
           task: "model-provider-status",
           diagnostic: "Ready now.",
@@ -713,7 +789,7 @@ describe("notifications", () => {
         {
           id: "trace_missing",
           provider: "ollama",
-          modelTag: "gemma4:e4b",
+          modelTag: "gemma4:31b",
           status: "model_missing",
           task: "model-provider-status",
           diagnostic: "Missing earlier.",
@@ -789,7 +865,7 @@ describe("model status", () => {
             intent: "save",
             enabled: "on",
             endpoint: "https://ollama.com",
-            modelTag: "gemma4:e4b"
+            modelTag: "gemma4:31b"
           })
         })
       );
@@ -797,7 +873,7 @@ describe("model status", () => {
 
       expect(response.status).toBe(303);
       expect(state.modelRuntime.enabled).toBe(true);
-      expect(state.modelRuntime.modelTag).toBe("gemma4:e4b");
+      expect(state.modelRuntime.modelTag).toBe("gemma4:31b");
     } finally {
       globalThis.fetch = originalFetch;
     }
@@ -809,7 +885,7 @@ describe("model status", () => {
       provider: "ollama",
       enabled: false,
       endpoint: "https://ollama.com",
-      modelTag: "gemma4:e4b-custom",
+      modelTag: "gemma4:31b-custom",
       updatedAt: "2026-05-10T00:00:00.000Z"
     };
     setStateRepository(new MemoryStateRepository(seed));
@@ -817,7 +893,7 @@ describe("model status", () => {
     const response = await getPipelineSnapshot();
     const body = await response.json();
 
-    expect(body.modelRouter.selectedModel).toBe("gemma4:e4b-custom");
+    expect(body.modelRouter.selectedModel).toBe("gemma4:31b-custom");
     expect(body.modelRouter.apiBaseUrl).toBe("https://ollama.com/api");
   });
 
@@ -831,7 +907,7 @@ describe("model status", () => {
       const report = await checkOllamaStatus({
         enabled: true,
         endpoint: "https://example.com/ollama",
-        modelTag: "gemma4:e4b"
+        modelTag: "gemma4:31b"
       });
       const response = await postModelStatus(
         new Request("http://localhost/api/model-status", {
@@ -840,7 +916,7 @@ describe("model status", () => {
             intent: "check",
             enabled: "on",
             endpoint: "https://example.com/ollama",
-            modelTag: "gemma4:e4b"
+            modelTag: "gemma4:31b"
           })
         })
       );
@@ -862,7 +938,7 @@ describe("model status", () => {
     globalThis.fetch = (async (input, init) => {
       calls.push(`${init?.method ?? "GET"} ${String(input)}`);
       if (String(input).endsWith("/api/tags")) {
-        return Response.json({ models: [{ name: "gemma4:e4b" }] });
+        return Response.json({ models: [{ name: "gemma4:31b" }] });
       }
       return Response.json({ response: "{\"ok\":true}" });
     }) as typeof fetch;
@@ -875,7 +951,7 @@ describe("model status", () => {
             intent: "check",
             enabled: "on",
             endpoint: "https://ollama.com",
-            modelTag: "gemma4:e4b"
+            modelTag: "gemma4:31b"
           })
         })
       );
@@ -895,7 +971,7 @@ describe("model status", () => {
     const report = await checkOllamaStatus({
       enabled: true,
       apiKey: "test-key",
-      modelTag: "gemma4:e4b",
+      modelTag: "gemma4:31b",
       fetchFn: async () => {
         throw new Error("offline");
       }
@@ -910,7 +986,7 @@ describe("model status", () => {
     const report = await checkOllamaStatus({
       enabled: true,
       apiKey: "test-key",
-      modelTag: "gemma4:e4b",
+      modelTag: "gemma4:31b",
       fetchFn: async () => Response.json({ models: [{ name: "other-model:latest" }] })
     });
 
@@ -924,11 +1000,11 @@ describe("model status", () => {
     const report = await checkOllamaStatus({
       enabled: true,
       apiKey: "test-key",
-      modelTag: "gemma4:e4b",
+      modelTag: "gemma4:31b",
       fetchFn: async (input, init) => {
         calls.push(`${init?.method ?? "GET"} ${String(input)}`);
         if (String(input).endsWith("/api/tags")) {
-          return Response.json({ models: [{ name: "gemma4:e4b" }] });
+          return Response.json({ models: [{ name: "gemma4:31b" }] });
         }
         return Response.json({ response: "{\"ok\":true}" });
       }
@@ -958,10 +1034,10 @@ describe("model-backed import analysis", () => {
       {
         enabled: true,
         apiKey: "test-key",
-        modelTag: "gemma4:e4b",
+        modelTag: "gemma4:31b",
         fetchFn: async (input) => {
           if (String(input).endsWith("/api/tags")) {
-            return Response.json({ models: [{ name: "gemma4:e4b" }] });
+            return Response.json({ models: [{ name: "gemma4:31b" }] });
           }
           if (String(input).endsWith("/api/generate")) {
             generateCalls += 1;
@@ -999,10 +1075,10 @@ describe("model-backed import analysis", () => {
       {
         enabled: true,
         apiKey: "test-key",
-        modelTag: "gemma4:e4b",
+        modelTag: "gemma4:31b",
         fetchFn: async (input) => {
           if (String(input).endsWith("/api/tags")) {
-            return Response.json({ models: [{ name: "gemma4:e4b" }] });
+            return Response.json({ models: [{ name: "gemma4:31b" }] });
           }
           if (String(input).endsWith("/api/generate")) {
             generateCalls += 1;
@@ -1043,7 +1119,7 @@ describe("model-backed resume analysis", () => {
     const next = await evaluateResumeTextWithModel(createSeedState(), "resume-v1", resumeText, {
       enabled: true,
       apiKey: "test-key",
-      modelTag: "gemma4:e4b",
+      modelTag: "gemma4:31b",
       fetchFn: async () => {
         throw new Error("offline");
       }
@@ -1060,10 +1136,10 @@ describe("model-backed resume analysis", () => {
     const next = await evaluateResumeTextWithModel(createSeedState(), "resume-v2", resumeText, {
       enabled: true,
       apiKey: "test-key",
-      modelTag: "gemma4:e4b",
+      modelTag: "gemma4:31b",
       fetchFn: async (input) => {
         if (String(input).endsWith("/api/tags")) {
-          return Response.json({ models: [{ name: "gemma4:e4b" }] });
+          return Response.json({ models: [{ name: "gemma4:31b" }] });
         }
         generateCalls += 1;
         if (generateCalls === 1) {
@@ -1078,7 +1154,7 @@ describe("model-backed resume analysis", () => {
 
     const evaluation = next.resumeEvaluations[0];
     expect(evaluation?.source).toBe("ollama");
-    expect(evaluation?.modelTag).toBe("gemma4:e4b");
+    expect(evaluation?.modelTag).toBe("gemma4:31b");
     expect(evaluation?.status).toBe("completed");
     expect(evaluation?.confidence).toBe(0.88);
     expect(next.resumeDocuments[0]?.sections).toEqual(["Experience", "Projects", "Education", "Skills"]);
@@ -1093,10 +1169,10 @@ describe("model-backed resume analysis", () => {
     const next = await evaluateResumeTextWithModel(createSeedState(), "resume-v3", resumeText, {
       enabled: true,
       apiKey: "test-key",
-      modelTag: "gemma4:e4b",
+      modelTag: "gemma4:31b",
       fetchFn: async (input) => {
         if (String(input).endsWith("/api/tags")) {
-          return Response.json({ models: [{ name: "gemma4:e4b" }] });
+          return Response.json({ models: [{ name: "gemma4:31b" }] });
         }
         generateCalls += 1;
         if (generateCalls === 1) {
@@ -1119,10 +1195,10 @@ describe("model-backed resume analysis", () => {
     const next = await evaluateResumeTextWithModel(createSeedState(), "resume-v4", resumeText, {
       enabled: true,
       apiKey: "test-key",
-      modelTag: "gemma4:e4b",
+      modelTag: "gemma4:31b",
       fetchFn: async (input) => {
         if (String(input).endsWith("/api/tags")) {
-          return Response.json({ models: [{ name: "gemma4:e4b" }] });
+          return Response.json({ models: [{ name: "gemma4:31b" }] });
         }
         generateCalls += 1;
         if (generateCalls === 1) {
@@ -1140,6 +1216,47 @@ describe("model-backed resume analysis", () => {
     expect(next.resumeEvaluations[1]?.source).toBe("deterministic");
     expect(next.modelTraces[0]?.fallbackPath).toBe("deterministic");
     expect(next.modelTraces[0]?.confidence).toBe(0.52);
+  });
+
+  it("rejects oversized resume form bodies before analysis", async () => {
+    const previousOllamaEnabled = process.env.CAREEROS_OLLAMA_ENABLED;
+    process.env.CAREEROS_OLLAMA_ENABLED = "false";
+    setStateRepository(new MemoryStateRepository(createSeedState()));
+
+    try {
+      const response = await postResume(
+        new Request("http://localhost/api/resume", {
+          method: "POST",
+          headers: { "content-length": "80001" },
+          body: new URLSearchParams({
+            intent: "analyze",
+            title: "Too large",
+            text: "Experience ".repeat(100)
+          })
+        })
+      );
+
+      expect(response.status).toBe(413);
+      expect((await readState()).resumeDocuments[0]?.title).not.toBe("Too large");
+
+      const responseWithoutHeader = await postResume(
+        new Request("http://localhost/api/resume", {
+          method: "POST",
+          headers: { "content-type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams({
+            intent: "analyze",
+            title: "Too large without header",
+            text: "Experience ".repeat(9000)
+          })
+        })
+      );
+
+      expect(responseWithoutHeader.status).toBe(413);
+      expect((await readState()).resumeDocuments[0]?.title).not.toBe("Too large without header");
+    } finally {
+      restoreEnv("CAREEROS_OLLAMA_ENABLED", previousOllamaEnabled);
+      setStateRepository(new MemoryStateRepository());
+    }
   });
 });
 
@@ -1181,7 +1298,7 @@ describe("judge pipeline API snapshot", () => {
     const snapshot = deriveAgentPipelineSnapshot(state, {
       status: "disabled",
       endpoint: "https://ollama.com",
-      modelTag: "gemma4:e4b",
+      modelTag: "gemma4:31b",
       installedModels: [],
       diagnostic: "Ollama disabled."
     });
@@ -1209,7 +1326,7 @@ describe("judge pipeline API snapshot", () => {
     const responses = await Promise.all([
       getPipelineSnapshot(),
       getModelStatus(),
-      getConnectors(),
+      getConnectors(new Request("http://localhost/api/connectors")),
       getAnalytics(),
       getEvidence(),
       getReviewQueue(new Request("http://localhost/api/review?status=all")),
@@ -1233,6 +1350,7 @@ describe("judge pipeline API snapshot", () => {
 
   it("keeps the full state snapshot behind an explicit development debug flag", async () => {
     const previousDebug = process.env.CAREEROS_DEBUG_STATE_ENABLED;
+    const previousNodeEnv = process.env.NODE_ENV;
     setStateRepository(new MemoryStateRepository(createSeedState()));
 
     try {
@@ -1246,8 +1364,17 @@ describe("judge pipeline API snapshot", () => {
       expect(enabled.status).toBe(200);
       expect(state.workspaceUser.id).toBe("user_local_workspace");
       expect(enabled.headers.get("cache-control")).toBe("no-store");
+
+      setNodeEnvForTest("production");
+      const production = await getDebugStateSnapshot();
+      expect(production.status).toBe(404);
     } finally {
       restoreEnv("CAREEROS_DEBUG_STATE_ENABLED", previousDebug);
+      if (previousNodeEnv === undefined) {
+        Reflect.deleteProperty(process.env, "NODE_ENV");
+      } else {
+        setNodeEnvForTest(previousNodeEnv);
+      }
     }
   });
 });
@@ -1262,7 +1389,7 @@ describe("persistence abstraction", () => {
       legacySeed.modelRuntime = {
         ...legacySeed.modelRuntime,
         enabled: true,
-        modelTag: "gemma4:e4b"
+        modelTag: "gemma4:31b"
       };
       await repository.write(legacySeed);
       setStateRepository(repository);
@@ -1361,7 +1488,17 @@ describe("persistence abstraction", () => {
   });
 
   it("exports normalized local state without absolute paths or private provider values", async () => {
-    setStateRepository(new MemoryStateRepository(createSeedState()));
+    const seed = createSeedState() as CareerOSState & {
+      connectorAccounts: Array<CareerOSState["connectorAccounts"][number] & { accessToken?: string; providerKey?: string }>;
+    };
+    seed.connectorAccounts = [
+      {
+        ...seed.connectorAccounts[0],
+        accessToken: "access-token-should-not-export",
+        providerKey: "provider-key-should-not-export"
+      }
+    ];
+    setStateRepository(new MemoryStateRepository(seed));
     const response = await getExport();
     const text = await response.text();
     const exported = JSON.parse(text) as CareerOSState;
@@ -1372,6 +1509,7 @@ describe("persistence abstraction", () => {
     expect(text).not.toContain(["console", "neon", "tech"].join("."));
     expect(text).not.toContain(`railway.${"app"}/project`);
     expect(text).not.toContain(`@${"gmail"}.com`);
+    expect(text).not.toMatch(/access-token-should-not-export|provider-key-should-not-export/i);
   });
 
   it("round-trips a normalized workspace export through strict JSON import", async () => {
@@ -1414,6 +1552,7 @@ describe("persistence abstraction", () => {
     expect(body.imported).toBe(true);
     expect(state.schemaVersion).toBe(1);
     expect(state.importJobs[0]?.source).toBe("json");
+    expect(state.auditEvents.some((event) => event.action === "workspace.imported" || event.action === "import.processed")).toBe(true);
     expect(state.applications.find((item) => item.company === "Round Trip Systems")?.resumeVersion).toBe(
       "resume-platform-v7.pdf"
     );
@@ -1490,6 +1629,35 @@ describe("persistence abstraction", () => {
 
     expect(response.status).toBe(400);
     expect((await readState()).connectorAccounts.some((account) => "accessToken" in account)).toBe(false);
+  });
+
+  it("rejects raw Gmail payloads and raw model response fields in workspace imports", async () => {
+    const seed = createSeedState();
+    setStateRepository(new MemoryStateRepository(seed));
+
+    const rawGmail = await postWorkspaceImport(
+      workspaceImportRequest({
+        ...seed,
+        mailboxThreads: [
+          {
+            ...seed.mailboxThreads[0],
+            messages: [{ ...seed.mailboxThreads[0].messages[0], payload: { body: "full Gmail body" } }]
+          },
+          ...seed.mailboxThreads.slice(1)
+        ]
+      })
+    );
+    const rawModel = await postWorkspaceImport(
+      workspaceImportRequest({
+        ...seed,
+        modelTraces: [{ ...seed.modelTraces[0], rawModelResponse: "full model response" }]
+      })
+    );
+
+    expect(rawGmail.status).toBe(400);
+    expect(rawModel.status).toBe(400);
+    expect((await readState()).mailboxThreads[0]?.messages[0]).not.toHaveProperty("payload");
+    expect((await readState()).modelTraces[0]).not.toHaveProperty("rawModelResponse");
   });
 
   it("imports a validated workspace file from the settings form contract", async () => {
@@ -1636,7 +1804,7 @@ describe("optional Gmail connector architecture", () => {
     setStateRepository(new MemoryStateRepository(createSeedState()));
 
     try {
-      const listResponse = await getConnectors();
+      const listResponse = await getConnectors(new Request("http://localhost/api/connectors"));
       const list = await listResponse.json();
       expect(list.connectors[0].status).toBe("disabled");
 
@@ -1655,6 +1823,116 @@ describe("optional Gmail connector architecture", () => {
       expect(JSON.stringify(state)).not.toMatch(/oauth|refresh_token|access_token/i);
     } finally {
       restoreEnv("CAREEROS_GMAIL_CONNECTOR_ENABLED", previousEnabled);
+    }
+  });
+
+  it("exposes Gmail OAuth redirect diagnostics without leaking secrets", async () => {
+    const previousEnabled = process.env.CAREEROS_GMAIL_CONNECTOR_ENABLED;
+    const previousId = process.env.CAREEROS_GMAIL_CLIENT_ID;
+    const previousSecret = process.env.CAREEROS_GMAIL_CLIENT_SECRET;
+    const previousRedirect = process.env.CAREEROS_GMAIL_REDIRECT_URI;
+    process.env.CAREEROS_GMAIL_CONNECTOR_ENABLED = "true";
+    process.env.CAREEROS_GMAIL_CLIENT_ID = "local-client-id";
+    process.env.CAREEROS_GMAIL_CLIENT_SECRET = "private-client-secret";
+    process.env.CAREEROS_GMAIL_REDIRECT_URI = "http://localhost:3000/api/connectors/gmail/callback";
+    setStateRepository(new MemoryStateRepository(createSeedState()));
+
+    try {
+      const diagnostic = gmailOAuthSetupDiagnostic("http://localhost:3000/settings?section=gmail");
+      expect(diagnostic.status).toBe("ready");
+      expect(diagnostic.redirectUri).toBe("http://localhost:3000/api/connectors/gmail/callback");
+      expect(diagnostic.originMatchesRequest).toBe(true);
+
+      const response = await getConnectors(new Request("http://localhost:3000/api/connectors"));
+      const body = await response.json();
+      const serialized = JSON.stringify(body);
+      expect(body.gmailOAuth.redirectUri).toBe("http://localhost:3000/api/connectors/gmail/callback");
+      expect(serialized).not.toContain("private-client-secret");
+      expect(serialized).not.toContain("local-client-id");
+    } finally {
+      restoreEnv("CAREEROS_GMAIL_CONNECTOR_ENABLED", previousEnabled);
+      restoreEnv("CAREEROS_GMAIL_CLIENT_ID", previousId);
+      restoreEnv("CAREEROS_GMAIL_CLIENT_SECRET", previousSecret);
+      restoreEnv("CAREEROS_GMAIL_REDIRECT_URI", previousRedirect);
+    }
+  });
+
+  it("blocks Gmail connect before Google when the local redirect origin is mismatched", async () => {
+    const previousEnabled = process.env.CAREEROS_GMAIL_CONNECTOR_ENABLED;
+    const previousId = process.env.CAREEROS_GMAIL_CLIENT_ID;
+    const previousSecret = process.env.CAREEROS_GMAIL_CLIENT_SECRET;
+    const previousRedirect = process.env.CAREEROS_GMAIL_REDIRECT_URI;
+    process.env.CAREEROS_GMAIL_CONNECTOR_ENABLED = "true";
+    process.env.CAREEROS_GMAIL_CLIENT_ID = "local-client-id";
+    process.env.CAREEROS_GMAIL_CLIENT_SECRET = "private-client-secret";
+    process.env.CAREEROS_GMAIL_REDIRECT_URI = "http://127.0.0.1:3000/api/connectors/gmail/callback";
+    setStateRepository(new MemoryStateRepository(createSeedState()));
+
+    try {
+      const response = await postGmailConnector(
+        new Request("http://localhost:3000/api/connectors/gmail/connect", {
+          method: "POST",
+          headers: { accept: "application/json" }
+        }),
+        { params: Promise.resolve({ action: "connect" }) }
+      );
+      const body = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(body.status).toBe("needs_attention");
+      expect(body.oauthSetup.redirectUri).toBe("http://127.0.0.1:3000/api/connectors/gmail/callback");
+      expect(body.oauthSetup.requestedOrigin).toBe("http://localhost:3000");
+      expect(body.oauthSetup.originMatchesRequest).toBe(false);
+      expect(JSON.stringify(body)).not.toContain("accounts.google.com");
+      expect(JSON.stringify(body)).not.toContain("private-client-secret");
+    } finally {
+      restoreEnv("CAREEROS_GMAIL_CONNECTOR_ENABLED", previousEnabled);
+      restoreEnv("CAREEROS_GMAIL_CLIENT_ID", previousId);
+      restoreEnv("CAREEROS_GMAIL_CLIENT_SECRET", previousSecret);
+      restoreEnv("CAREEROS_GMAIL_REDIRECT_URI", previousRedirect);
+    }
+  });
+
+  it("sanitizes Gmail OAuth callback errors before redirecting to settings", async () => {
+    const denied = await getGmailCallback(
+      new Request("http://localhost/api/connectors/gmail/callback?error=access_denied&error_description=private-provider-detail")
+    );
+    const badState = await getGmailCallback(new Request("http://localhost/api/connectors/gmail/callback?code=abc&state=bad-state"));
+    const missingCode = await getGmailCallback(
+      new Request(`http://localhost/api/connectors/gmail/callback?state=${gmailOAuthState}`)
+    );
+
+    expect(denied.status).toBe(303);
+    expect(denied.headers.get("location")).toBe("http://localhost/settings?section=gmail&gmail=oauth_denied");
+    expect(denied.headers.get("location")).not.toContain("private-provider-detail");
+    expect(badState.status).toBe(303);
+    expect(badState.headers.get("location")).toBe("http://localhost/settings?section=gmail&gmail=oauth_state_invalid");
+    expect(missingCode.status).toBe(303);
+    expect(missingCode.headers.get("location")).toBe("http://localhost/settings?section=gmail&gmail=missing_code");
+  });
+
+  it("sanitizes Gmail OAuth exchange failures instead of exposing provider errors", async () => {
+    const previousEnabled = process.env.CAREEROS_GMAIL_CONNECTOR_ENABLED;
+    const previousId = process.env.CAREEROS_GMAIL_CLIENT_ID;
+    const previousSecret = process.env.CAREEROS_GMAIL_CLIENT_SECRET;
+    const originalFetch = globalThis.fetch;
+    process.env.CAREEROS_GMAIL_CONNECTOR_ENABLED = "true";
+    process.env.CAREEROS_GMAIL_CLIENT_ID = "local-client";
+    process.env.CAREEROS_GMAIL_CLIENT_SECRET = "local-secret";
+    globalThis.fetch = (async () => new Response("private provider failure", { status: 500 })) as typeof fetch;
+
+    try {
+      const response = await getGmailCallback(
+        new Request(`http://localhost/api/connectors/gmail/callback?code=bad-code&state=${gmailOAuthState}`)
+      );
+      expect(response.status).toBe(303);
+      expect(response.headers.get("location")).toBe("http://localhost/settings?section=gmail&gmail=exchange_failed");
+      expect(response.headers.get("location")).not.toContain("private provider failure");
+    } finally {
+      globalThis.fetch = originalFetch;
+      restoreEnv("CAREEROS_GMAIL_CONNECTOR_ENABLED", previousEnabled);
+      restoreEnv("CAREEROS_GMAIL_CLIENT_ID", previousId);
+      restoreEnv("CAREEROS_GMAIL_CLIENT_SECRET", previousSecret);
     }
   });
 
@@ -1680,21 +1958,20 @@ describe("optional Gmail connector architecture", () => {
           return Response.json({ messages: [{ id: "gmail_msg_1", threadId: "gmail_thread_1" }] });
         }
         if (url.includes("/messages/gmail_msg_1")) {
+          const messageUrl = new URL(url);
+          expect(messageUrl.searchParams.get("format")).toBe("metadata");
+          expect(messageUrl.searchParams.getAll("metadataHeaders").sort()).toEqual(["Date", "From", "Subject"]);
           return Response.json({
             id: "gmail_msg_1",
             threadId: "gmail_thread_1",
             snippet: "Assessment due 2026-05-20 for Product Engineer.",
             internalDate: String(Date.parse("2026-05-12T12:00:00.000Z")),
             payload: {
-              mimeType: "text/plain",
               headers: [
                 { name: "Subject", value: "Assessment from Signal Works for Product Engineer" },
                 { name: "From", value: "Recruiting <recruiting@signal.example>" },
                 { name: "Date", value: "Tue, 12 May 2026 12:00:00 +0000" }
-              ],
-              body: {
-                data: Buffer.from("Please complete the assessment by 2026-05-20.").toString("base64url")
-              }
+              ]
             }
           });
         }
@@ -1712,6 +1989,7 @@ describe("optional Gmail connector architecture", () => {
       expect(synced.records[0]?.company).toBe("Signal Works");
       expect(synced.records[0]?.role).toContain("Product Engineer");
       expect(synced.records[0]?.text).toContain("Assessment");
+      expect(synced.records[0]?.text).not.toContain("Please complete");
       expect(JSON.stringify(synced.records)).not.toMatch(/access-token|refresh-token/);
     } finally {
       globalThis.fetch = originalFetch;
@@ -1719,6 +1997,165 @@ describe("optional Gmail connector architecture", () => {
       restoreEnv("CAREEROS_GMAIL_CLIENT_ID", previousId);
       restoreEnv("CAREEROS_GMAIL_CLIENT_SECRET", previousSecret);
       restoreEnv("CAREEROS_DATA_DIR", previousDir);
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("syncs Gmail with bounded pagination, duplicate suppression, thread merge, and audit history", async () => {
+    const previousEnabled = process.env.CAREEROS_GMAIL_CONNECTOR_ENABLED;
+    const previousId = process.env.CAREEROS_GMAIL_CLIENT_ID;
+    const previousSecret = process.env.CAREEROS_GMAIL_CLIENT_SECRET;
+    const previousDir = process.env.CAREEROS_DATA_DIR;
+    const previousOllama = process.env.CAREEROS_OLLAMA_ENABLED;
+    const dir = await mkdtemp(path.join(tmpdir(), "careeros-gmail-lifecycle-"));
+    const originalFetch = globalThis.fetch;
+    const seed = createSeedState();
+    const gmailLifecycleThreadId = stableId("thread", ["gmail", "gmail_thread_lifecycle"]);
+    seed.mailboxThreads = [
+      {
+        id: gmailLifecycleThreadId,
+        source: "gmail",
+        subject: "Existing Gmail thread",
+        companyHint: "Signal Works",
+        roleHint: "Product Engineer",
+        createdAt: "2026-05-12T12:00:00.000Z",
+        messages: [
+          {
+            id: "gmail_dup",
+            threadId: gmailLifecycleThreadId,
+            fromLabel: "Recruiting",
+            subject: "Existing Gmail thread",
+            snippet: "Already imported bounded snippet.",
+            receivedAt: "2026-05-12T12:00:00.000Z",
+            sourceLabel: "gmail:gmail_dup"
+          }
+        ]
+      },
+      ...seed.mailboxThreads
+    ];
+    process.env.CAREEROS_GMAIL_CONNECTOR_ENABLED = "true";
+    process.env.CAREEROS_GMAIL_CLIENT_ID = "local-client";
+    process.env.CAREEROS_GMAIL_CLIENT_SECRET = "local-secret";
+    process.env.CAREEROS_DATA_DIR = dir;
+    process.env.CAREEROS_OLLAMA_ENABLED = "false";
+    setStateRepository(new MemoryStateRepository(seed));
+
+    try {
+      globalThis.fetch = (async (input) => {
+        const url = String(input);
+        if (url.includes("oauth2.googleapis.com/token")) {
+          return Response.json({ access_token: "access-token", refresh_token: "refresh-token", expires_in: 3600 });
+        }
+        if (url.includes("/messages?")) {
+          const parsed = new URL(url);
+          if (!parsed.searchParams.get("pageToken")) {
+            return Response.json({
+              messages: [{ id: "gmail_dup", threadId: "gmail_thread_lifecycle" }],
+              nextPageToken: "page-2",
+              resultSizeEstimate: 2
+            });
+          }
+          return Response.json({ messages: [{ id: "gmail_new", threadId: "gmail_thread_lifecycle" }] });
+        }
+        if (url.includes("/messages/gmail_dup")) {
+          return Response.json({
+            id: "gmail_dup",
+            threadId: "gmail_thread_lifecycle",
+            snippet: "Already imported assessment due 2026-05-20.",
+            internalDate: String(Date.parse("2026-05-12T12:00:00.000Z")),
+            payload: {
+              headers: [
+                { name: "Subject", value: "Assessment from Signal Works for Product Engineer" },
+                { name: "From", value: "Recruiting <recruiting@signal.example>" },
+                { name: "Date", value: "Tue, 12 May 2026 12:00:00 +0000" }
+              ]
+            }
+          });
+        }
+        if (url.includes("/messages/gmail_new")) {
+          return Response.json({
+            id: "gmail_new",
+            threadId: "gmail_thread_lifecycle",
+            snippet: "Interview scheduled on 2026-05-21 for Product Engineer.",
+            internalDate: String(Date.parse("2026-05-13T12:00:00.000Z")),
+            payload: {
+              headers: [
+                { name: "Subject", value: "Interview from Signal Works for Product Engineer" },
+                { name: "From", value: "Recruiting <recruiting@signal.example>" },
+                { name: "Date", value: "Wed, 13 May 2026 12:00:00 +0000" }
+              ]
+            }
+          });
+        }
+        return new Response("not found", { status: 404 });
+      }) as typeof fetch;
+
+      await exchangeGmailCode("local-code", "http://localhost/api/connectors/gmail/callback");
+      const response = await postGmailConnector(
+        new Request("http://localhost/api/connectors/gmail/sync", {
+          method: "POST",
+          headers: { accept: "application/json" }
+        }),
+        { params: Promise.resolve({ action: "sync" }) }
+      );
+      const result = await response.json();
+      const state = await readState();
+      const gmailThread = state.mailboxThreads.find((thread) => thread.id === gmailLifecycleThreadId);
+
+      expect(response.status).toBe(200);
+      expect(result.importJob.source).toBe("gmail");
+      expect(result.stats.pagesFetched).toBe(2);
+      expect(result.stats.importedRecords).toBe(1);
+      expect(result.stats.duplicateRecords).toBe(1);
+      expect(gmailThread?.messages.map((message) => message.id)).toContain("gmail_new");
+      expect(gmailThread?.messages.filter((message) => message.id === "gmail_dup")).toHaveLength(1);
+      expect(state.evidenceSnippets.filter((snippet) => snippet.sourceLabel === "gmail:gmail_new")).toHaveLength(1);
+      expect(state.evidenceSnippets.filter((snippet) => snippet.sourceLabel === "gmail:gmail_dup")).toHaveLength(0);
+      expect(state.auditEvents[0]?.action).toBe("gmail.sync");
+      expect(JSON.stringify(state.auditEvents[0])).not.toMatch(/access-token|refresh-token|raw|secret/i);
+    } finally {
+      globalThis.fetch = originalFetch;
+      restoreEnv("CAREEROS_GMAIL_CONNECTOR_ENABLED", previousEnabled);
+      restoreEnv("CAREEROS_GMAIL_CLIENT_ID", previousId);
+      restoreEnv("CAREEROS_GMAIL_CLIENT_SECRET", previousSecret);
+      restoreEnv("CAREEROS_DATA_DIR", previousDir);
+      restoreEnv("CAREEROS_OLLAMA_ENABLED", previousOllama);
+      setStateRepository(new MemoryStateRepository());
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("sanitizes Gmail sync failures without echoing provider details", async () => {
+    const previousEnabled = process.env.CAREEROS_GMAIL_CONNECTOR_ENABLED;
+    const previousId = process.env.CAREEROS_GMAIL_CLIENT_ID;
+    const previousSecret = process.env.CAREEROS_GMAIL_CLIENT_SECRET;
+    const previousDir = process.env.CAREEROS_DATA_DIR;
+    const dir = await mkdtemp(path.join(tmpdir(), "careeros-gmail-sync-fail-"));
+    process.env.CAREEROS_GMAIL_CONNECTOR_ENABLED = "true";
+    process.env.CAREEROS_GMAIL_CLIENT_ID = "local-client";
+    process.env.CAREEROS_GMAIL_CLIENT_SECRET = "local-secret";
+    process.env.CAREEROS_DATA_DIR = dir;
+    setStateRepository(new MemoryStateRepository(createSeedState()));
+
+    try {
+      const response = await postGmailConnector(
+        new Request("http://localhost/api/connectors/gmail/sync", {
+          method: "POST",
+          headers: { accept: "application/json" }
+        }),
+        { params: Promise.resolve({ action: "sync" }) }
+      );
+      const result = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(result.message).toContain("Gmail sync could not complete");
+      expect(result.message).not.toMatch(/token is missing|provider|stack|oauth2/i);
+    } finally {
+      restoreEnv("CAREEROS_GMAIL_CONNECTOR_ENABLED", previousEnabled);
+      restoreEnv("CAREEROS_GMAIL_CLIENT_ID", previousId);
+      restoreEnv("CAREEROS_GMAIL_CLIENT_SECRET", previousSecret);
+      restoreEnv("CAREEROS_DATA_DIR", previousDir);
+      setStateRepository(new MemoryStateRepository());
       await rm(dir, { recursive: true, force: true });
     }
   });

@@ -48,6 +48,8 @@ function bucketForApplication(application: Application, hasClosedFollowUp: boole
 export default async function ApplicationsPage() {
   const state = await readServerState();
   const selected = state.applications[0];
+  const connector = state.connectorAccounts.find((item) => item.provider === "gmail");
+  const gmailConnected = connector?.status === "connected";
   const workspaceEmpty = state.applications.length === 0;
   const selectedEvents = selected ? state.events.filter((event) => event.applicationId === selected.id) : [];
   const selectedEvidence = selected ? state.evidenceSnippets.filter((item) => item.applicationId === selected.id) : [];
@@ -98,16 +100,14 @@ export default async function ApplicationsPage() {
       <div className="workspace-shell fixed-workspace applications-workspace mx-auto grid w-full max-w-[104rem] gap-4 px-3 py-4 sm:px-5 sm:py-6 xl:grid-cols-[minmax(0,7fr)_minmax(360px,3fr)]">
         <div className="applications-main-stack grid min-w-0 gap-4">
           <section className="card app-workspace-panel workspace-fixed-top applications-page-header p-4 sm:p-5">
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div className="applications-header-row">
               <div>
-                <p className="eyebrow">Applications</p>
-                <h1 className="mt-2 text-base font-semibold text-[var(--text-primary)] sm:text-xl">Job pipeline</h1>
-                <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">
-                  Gmail recruiting mail becomes evidence-backed application records: stage, JD link, resume version,
-                  recruiter contact, review state, and next action stay together.
+                <h1 className="text-base font-semibold text-[var(--text-primary)] sm:text-xl">Job pipeline</h1>
+                <p className="mt-1 text-sm leading-6 text-[var(--text-secondary)]">
+                  Evidence-backed application records created from Gmail recruiting mail.
                 </p>
               </div>
-              <div className="flex flex-wrap gap-2">
+              <div className="applications-header-actions">
                 <Link className="btn btn-primary btn-sm" href="/settings?section=gmail">
                   Connect Gmail
                 </Link>
@@ -116,61 +116,69 @@ export default async function ApplicationsPage() {
                 </Link>
               </div>
             </div>
-            <div className="applications-summary-strip mt-4">
-              {metrics.map(([label, value], index) => (
-                <div className={`applications-summary-pill ${index === 0 ? "selected" : ""}`} key={label}>
-                  <span>{label}</span>
-                  <strong>{value}</strong>
-                </div>
-              ))}
-            </div>
+            {!workspaceEmpty ? (
+              <div className="applications-summary-strip mt-4">
+                {metrics.map(([label, value], index) => (
+                  <div className={`applications-summary-pill ${index === 0 ? "selected" : ""}`} key={label}>
+                    <span>{label}</span>
+                    <strong>{value}</strong>
+                  </div>
+                ))}
+              </div>
+            ) : null}
           </section>
 
           <div className="workspace-scroll-region applications-scroll-region min-w-0">
           {workspaceEmpty ? (
-            <section className="card app-workspace-panel p-4 sm:p-5">
-              <div className="section-title">
+            <section className="card app-workspace-panel applications-section-panel applications-empty-workspace p-0">
+              <div className="section-title applications-section-head p-4 sm:p-5">
                 <div>
-                  <p className="eyebrow">Clean workspace</p>
-                  <h2>Sync Gmail to create the first application records</h2>
+                  <h2>No application records yet</h2>
                   <p className="subtle">
-                    CareerOS no longer preloads sample applications. Connect readonly Gmail, sync recent recruiting mail,
-                    and the mailbox triage and workflow extraction agents will create review-gated records here.
+                    Connect readonly Gmail or import a validated CareerOS JSON workspace. The mailbox agents will create
+                    review-gated application records from bounded recruiting snippets.
                   </p>
                 </div>
-                <span className="badge info">0 records</span>
+                <span className="applications-section-count">Empty</span>
               </div>
-              <div className="grid three">
-                {[
-                  ["1. Connect", "Authorize readonly Gmail with the Google OAuth client in `.env.local`."],
-                  ["2. Sync", "Fetch bounded recruiting snippets from the Gmail query window."],
-                  ["3. Review", "Accept, correct, or dismiss uncertain/model-backed updates before state changes."]
-                ].map(([title, body]) => (
-                  <div className="state-cell" key={title}>
-                    <span className="label">{title}</span>
-                    <strong>{body}</strong>
-                  </div>
-                ))}
-              </div>
-              <div className="actions mt-4">
-                <form action="/api/connectors/gmail/connect" method="post">
-                  <button className="button primary" type="submit">Connect Gmail</button>
-                </form>
-                <form action="/api/connectors/gmail/sync" method="post">
-                  <button className="button secondary" type="submit">Sync recruiting mail</button>
-                </form>
-                <Link className="button secondary" href="/judge-demo">View judge demo</Link>
+              <div className="applications-section-body p-4 pt-3 sm:p-5 sm:pt-4">
+                <div className="grid three">
+                  {[
+                    ["1. Connect", "Authorize readonly Gmail with the Google OAuth client in `.env.local`."],
+                    ["2. Sync", "Fetch bounded recruiting snippets from the Gmail query window."],
+                    ["3. Review", "Accept, correct, or dismiss uncertain/model-backed updates before state changes."]
+                  ].map(([title, body]) => (
+                    <div className="state-cell" key={title}>
+                      <span className="label">{title}</span>
+                      <strong>{body}</strong>
+                    </div>
+                  ))}
+                </div>
+                <div className="actions mt-4">
+                  <form action="/api/connectors/gmail/connect" method="post">
+                    <button className="button primary" type="submit">
+                      {connector?.status === "needs_attention" ? "Reconnect Gmail" : "Connect Gmail"}
+                    </button>
+                  </form>
+                  {gmailConnected ? (
+                    <form action="/api/connectors/gmail/sync" method="post">
+                      <button className="button secondary" type="submit">Sync recruiting mail</button>
+                    </form>
+                  ) : null}
+                  <Link className="button secondary" href="/judge-demo">View judge demo</Link>
+                  <Link className="button secondary" href="/settings">Set up Gemma</Link>
+                </div>
               </div>
             </section>
-          ) : null}
+          ) : (
+            <>
           <details className="card app-workspace-panel stage-lane-panel stage-lane-disclosure p-4 sm:p-5">
-            <summary className="section-title">
+            <summary className="section-title applications-section-head">
               <div>
-                <p className="eyebrow">Stage board</p>
                 <h2>Board view for quick scanning</h2>
                 <p className="subtle">Buckets help scanning, but evidence-backed records remain the source of truth.</p>
               </div>
-              <span className="badge info">{state.applications.length} records</span>
+              <span className="applications-section-count">{state.applications.length} records</span>
             </summary>
             <div className="stage-lane-grid" aria-label="Application stage board">
               {boardLanes.map((lane) => {
@@ -232,13 +240,12 @@ export default async function ApplicationsPage() {
           </details>
 
           <section className="card app-workspace-panel applications-table-panel overflow-hidden p-0">
-            <div className="border-b border-[var(--border)] p-4 sm:p-5">
+            <div className="applications-section-head border-b border-[var(--border)] p-4 sm:p-5">
               <div className="section-title">
                 <div>
-                  <p className="eyebrow">Application records</p>
                   <h2>Evidence-first records</h2>
                 </div>
-                <span className="badge info">{state.applications.length} records</span>
+                <span className="applications-section-count">{state.applications.length} records</span>
               </div>
               <p className="mt-2 text-xs text-[var(--text-tertiary)]">
                 Core fields stay visible first; <Link href="/notifications">notifications</Link> handles urgency.
@@ -291,7 +298,11 @@ export default async function ApplicationsPage() {
                     <tr>
                       <td colSpan={5}>
                         <div className="empty-state">
-                          No application records yet. Connect Gmail or import a validated CareerOS JSON workspace to populate this table.
+                          <strong>No application records yet</strong>
+                          <span>
+                            Use the judge demo for the sanitized sample flow, or connect readonly Gmail to create real
+                            review-gated records from bounded recruiting snippets.
+                          </span>
                         </div>
                       </td>
                     </tr>
@@ -302,13 +313,12 @@ export default async function ApplicationsPage() {
           </section>
 
           <section className="card app-workspace-panel thread-evidence-panel p-4 sm:p-5">
-            <div className="section-title">
+            <div className="section-title applications-section-head">
               <div>
-                <p className="eyebrow">Thread-level evidence</p>
                 <h2>Mailbox evidence behind the record</h2>
                 <p className="subtle">Bounded snippets stay attached to extracted fields, source message ids, confidence, and the owning application.</p>
               </div>
-              <span className="badge info">{selectedThreadMessages.length} messages</span>
+              <span className="applications-section-count">{selectedThreadMessages.length} messages</span>
             </div>
             {selected ? (
               <div className="thread-evidence-grid">
@@ -361,20 +371,29 @@ export default async function ApplicationsPage() {
               <div className="empty-state">No application selected for evidence inspection.</div>
             )}
           </section>
+            </>
+          )}
           </div>
         </div>
 
-        <aside className="card app-workspace-panel selected-rail applications-selected-rail p-3 sm:p-4">
-          <p className="eyebrow">Selected record</p>
+        <aside className="card app-workspace-panel selected-rail applications-selected-rail p-0">
+          <div className="selected-rail-head p-3 sm:p-4">
+            <p className="eyebrow">Selected record</p>
+            {selected ? (
+              <>
+                <h2 className="mt-3 text-lg font-semibold text-[var(--text-primary)]">{selected.company}</h2>
+                <p className="mt-1 text-sm text-[var(--text-secondary)]">{selected.role}</p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <span className={stageBadge(selected.stage)}>{stageLabel(selected.stage)}</span>
+                  <span className={selectedReview ? "badge warn" : "badge ok"}>{selectedReview ? "review blocked" : "review clear"}</span>
+                </div>
+              </>
+            ) : null}
+          </div>
+          <div className="selected-rail-body p-3 pt-0 sm:p-4 sm:pt-0">
           {selected ? (
             <>
-              <h2 className="mt-4 text-lg font-semibold text-[var(--text-primary)]">{selected.company}</h2>
-              <p className="mt-2 text-sm text-[var(--text-secondary)]">{selected.role}</p>
-              <div className="mt-4 flex flex-wrap gap-2">
-                <span className={stageBadge(selected.stage)}>{stageLabel(selected.stage)}</span>
-                <span className={selectedReview ? "badge warn" : "badge ok"}>{selectedReview ? "review blocked" : "review clear"}</span>
-              </div>
-              <div className="mt-5 grid gap-3">
+              <div className="grid gap-3">
                 <section className="rail-panel">
                   <p className="eyebrow">Next action</p>
                   <strong>{state.reminders.find((item) => item.applicationId === selected.id)?.title ?? "No open action"}</strong>
@@ -421,14 +440,14 @@ export default async function ApplicationsPage() {
                 ) : null}
                 <Link className="btn btn-secondary" href="/settings">Open connector settings</Link>
                 <section className="rail-panel">
-                  <div className="section-title">
+                  <div className="section-title applications-section-head">
                     <p className="eyebrow">Open tasks</p>
                     <span className="badge info">{state.reminders.filter((item) => item.applicationId === selected.id && item.status === "open").length}</span>
                   </div>
                   <span>{state.reminders.find((item) => item.applicationId === selected.id)?.title ?? "No open action for this record."}</span>
                 </section>
                 <section className="rail-panel">
-                  <div className="section-title">
+                  <div className="section-title applications-section-head">
                     <p className="eyebrow">Recent evidence</p>
                     <span className="badge info">{selectedEvents.length}</span>
                   </div>
@@ -437,17 +456,18 @@ export default async function ApplicationsPage() {
               </div>
             </>
           ) : (
-            <div className="empty-state">
-              <strong>No application selected.</strong>
-              <p className="subtle">
-                Sync Gmail to create the first evidence-backed record, or open the judge demo to inspect the sample flow.
-              </p>
-              <div className="actions mt-3">
-                <Link className="button primary" href="/settings?section=gmail">Gmail setup</Link>
-                <Link className="button secondary" href="/judge-demo">Judge demo</Link>
+            <div className="selected-rail-empty">
+              <img src="/mascots/pixel-inbox-buddy.svg" alt="" aria-hidden="true" />
+              <strong>No record selected</strong>
+              <p>Open the judge demo for a complete sample record, or connect Gmail to create your first local record.</p>
+              <div>
+                <Link className="btn btn-primary btn-sm" href="/settings?section=gmail">Gmail setup</Link>
+                <Link className="btn btn-secondary btn-sm" href="/judge-demo">Judge demo</Link>
+                <Link className="btn btn-secondary btn-sm" href="/settings">Gemma setup</Link>
               </div>
             </div>
           )}
+          </div>
         </aside>
       </div>
     </main>

@@ -34,7 +34,7 @@ function resolveRuntimeOptions(options: ModelRuntimeOptions = {}) {
   return {
     enabled: options.enabled ?? options.settings?.enabled ?? process.env.CAREEROS_OLLAMA_ENABLED === "true",
     endpoint: options.endpoint ?? options.settings?.endpoint ?? process.env.CAREEROS_OLLAMA_BASE_URL ?? "https://ollama.com",
-    modelTag: options.modelTag ?? options.settings?.modelTag ?? process.env.CAREEROS_GEMMA_MODEL ?? "gemma4:e4b",
+    modelTag: options.modelTag ?? options.settings?.modelTag ?? process.env.CAREEROS_GEMMA_MODEL ?? "gemma4:31b",
     apiKey: options.apiKey ?? process.env.OLLAMA_API_KEY ?? process.env.CAREEROS_OLLAMA_API_KEY,
     fetchFn: options.fetchFn ?? fetch,
     timeoutMs: options.timeoutMs ?? 45_000
@@ -110,7 +110,7 @@ export async function checkOllamaStatus(options: ModelRuntimeOptions = {}): Prom
       modelTag,
       installedModels: [],
       diagnostic:
-        "Ollama Cloud requires OLLAMA_API_KEY. Add it to .env.local, keep the endpoint as https://ollama.com, then retry Save and check."
+        "Ollama Cloud requires OLLAMA_API_KEY. Add it to .env.local, keep the endpoint as https://ollama.com, then verify the Ollama Cloud API again."
     };
   }
 
@@ -168,7 +168,7 @@ export async function checkOllamaStatus(options: ModelRuntimeOptions = {}): Prom
         endpoint,
         modelTag,
         installedModels,
-        diagnostic: `Ollama is reachable and ${modelTag} is available, but the bounded health prompt did not finish within ${Math.round(timeoutMs / 1000)}s. Next step: try a smaller model tag or retry Save and check.`,
+        diagnostic: `Ollama is reachable and ${modelTag} is available, but the bounded health prompt did not finish within ${Math.round(timeoutMs / 1000)}s. Next step: try a smaller model tag or verify the Ollama Cloud API again.`,
         latencyMs: Math.round(performance.now() - started)
       };
     }

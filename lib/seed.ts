@@ -94,12 +94,13 @@ export function createEmptyState(): CareerOSState {
       provider: "ollama",
       enabled: process.env.CAREEROS_OLLAMA_ENABLED === "true",
       endpoint: process.env.CAREEROS_OLLAMA_BASE_URL ?? "https://ollama.com",
-      modelTag: process.env.CAREEROS_GEMMA_MODEL ?? "gemma4:e4b",
+      modelTag: process.env.CAREEROS_GEMMA_MODEL ?? "gemma4:31b",
       updatedAt: createdAt
     },
     modelTraces: [],
     importJobs: [],
-    connectorAccounts: []
+    connectorAccounts: [],
+    auditEvents: []
   };
 }
 
@@ -281,7 +282,7 @@ export function createSeedState(): CareerOSState {
       provider: "ollama",
       enabled: false,
       endpoint: "https://ollama.com",
-      modelTag: "gemma4:e4b",
+      modelTag: "gemma4:31b",
       updatedAt: createdAt
     },
     modelTraces: [
@@ -314,6 +315,22 @@ export function createSeedState(): CareerOSState {
         label: "Gmail connector optional",
         message: "Disabled by default. Local CareerOS works without Gmail.",
         updatedAt: nowIso()
+      }
+    ],
+    auditEvents: [
+      {
+        id: stableId("audit", ["seed", "workspace"]),
+        action: "workspace.seeded",
+        status: "succeeded",
+        summary: "Sanitized local demo workspace was created.",
+        actor: "system",
+        sourceType: "local_data",
+        metadata: {
+          applications: 2,
+          mailboxThreads: 2,
+          reviewItems: 1
+        },
+        createdAt
       }
     ]
   };

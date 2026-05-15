@@ -1,6 +1,6 @@
 # Architecture
 
-Last updated: 2026-05-12
+Last updated: 2026-05-15
 
 For positioning and surface area, see [design.md](design.md). This doc is the
 **runtime, agent layers, and data boundaries**.
@@ -59,6 +59,38 @@ Node SQLite APIs in the public demo.
     review queue before mutation.
 11. The console shows pipeline state, agent handoffs, agent contracts, applications, reminders,
     notifications, recent changes, model traces, and resume intelligence.
+
+## LangGraph-Style Workflow Discipline
+
+CareerOS should be built with a LangGraph-style operating model even though the
+public repo does not need a LangGraph dependency. "LangGraph-style" means the
+workflow is explicit, checkpointable, interruptible, and replayable.
+
+Target node graph:
+
+```text
+Recruiting evidence
+  -> classify thread
+  -> extract application state
+  -> retrieve local context
+  -> score confidence and risk
+  -> interrupt for review when uncertain
+  -> persist approved mutation
+  -> derive reminders and notifications
+```
+
+Working rules:
+
+- Every node has typed input and output.
+- Every node records bounded evidence, confidence, fallback, or deterministic
+  reason.
+- The local `CareerOSState` is the checkpointable state boundary.
+- Manual review is an interrupt before mutation, not a label added after a
+  state change.
+- Model output is a proposal. Accepted or corrected review decisions are the
+  mutation boundary.
+- Tests should replay node edges from sanitized fixtures without Gmail,
+  provider keys, or network calls.
 
 ## Agent layers
 
@@ -130,9 +162,12 @@ Memory rules:
 - Local agent memory is the normalized CareerOS state under `.careeros-data`.
 - Long-term state is applications, mailbox thread metadata, bounded evidence,
   review items, candidate context, reminders, resume evaluations, model traces,
-  connector account state, and agent runs.
+  connector account state, local audit events, and agent runs.
 - Raw Gmail bodies, OAuth tokens, provider keys, raw model responses, full
   prompts, private paths, and local exports are not agent memory.
+- Audit events are bounded observability records for import, review, reminder,
+  Gmail, and local-data lifecycle actions. They store action/status/summary,
+  source id/type, timestamp, and scalar metadata only.
 - Workspace import/export must keep the same boundary and reject token-like or
   raw-body fields before writing state.
 
@@ -164,9 +199,10 @@ is the single source of truth; it drives `/api/providers`,
 | Planned (local adapter surface) | MLX (Apple Silicon), llama.cpp, LiteRT, vLLM, SGLang |
 | Planned (performance) | Gemma 4 MTP drafters for lower-latency local inference |
 
-Per-adapter integration notes, unlock gates, and the contract for promoting
-an adapter from `roadmap` to `implemented` live in
-[provider-research.md](provider-research.md).
+Roadmap adapters are tracked in [roadmap.md](roadmap.md). Keep that list short:
+an adapter moves from roadmap to implemented only after real code, credential
+or runtime boundaries, tests, smoke evidence, and review-gated mutation
+behavior exist.
 
 Required invariants:
 
@@ -210,9 +246,13 @@ snippets by mailbox thread, application, company, role, recruiter, source
 label, and resume version for frontend thread-level evidence views.
 
 Readonly Gmail OAuth is part of the local demo path. Tokens live outside the
-workspace export under `.careeros-data/gmail-oauth.json`; encrypted credential
-storage is still required before expanding scopes, adding hosted BYOK providers,
-or treating the connector as production credential infrastructure.
+workspace export under `.careeros-data/gmail-oauth.json`; sync requests Gmail
+metadata/snippets only and does not persist full message bodies. Sync is
+bounded, paginated, de-duplicates already imported message source labels, merges
+new messages into existing local threads, and writes compact audit/import-job
+metadata. Hosted-grade credential rotation/recovery is still required before
+expanding scopes, adding hosted BYOK providers, or treating the connector as
+production credential infrastructure.
 
 ## Future Load-Control Decisions
 
@@ -241,6 +281,7 @@ Gmail sync, provider adapters, or hosted deployments are added:
 | `lib/reminder-queries.ts` | Open reminder queries, completed/dismissed history, and application timelines |
 | `lib/evidence-queries.ts` | Evidence relationship read models grouped by thread, application, company, role, recruiter, source label, and resume version |
 | `lib/workspace-import.ts` | Strict normalized workspace JSON import validation and success import-job metadata |
+| `lib/audit.ts` | Bounded local audit events for import/review/reminder/Gmail/local-data observability |
 | `lib/notifications.ts` | Deterministic notification derivation with stable dedupe keys |
 | `lib/agent-pipeline.ts` | Judge-facing multi-agent mailbox pipeline snapshot |
 | `lib/agent-contracts.ts` | Product-facing agent prompting, memory, cost, can/cannot-do contracts |

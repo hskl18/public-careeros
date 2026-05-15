@@ -433,23 +433,6 @@ export default async function ApplicationDetailPage({ params }: ApplicationDetai
                 )}
               </div>
             </section>
-
-            <section className="card app-workspace-panel p-4">
-              <p className="eyebrow">Agentic pipeline framing</p>
-              <h2>Evidence before state changes</h2>
-              <div className="application-field-grid compact">
-                <span>Mailbox triage</span>
-                <strong>{threadGroups.length ? "thread matched" : "no thread"}</strong>
-                <span>Workflow extraction</span>
-                <strong>{stageLabel(application.stage)}</strong>
-                <span>Evidence/review</span>
-                <strong>{openReviews.length ? "blocked" : "clear"}</strong>
-                <span>Reminder agent</span>
-                <strong>{openReminders.length} open</strong>
-                <span>Model router</span>
-                <strong>{state.modelRuntime.enabled ? "Gemma via Ollama Cloud optional" : "deterministic fallback"}</strong>
-              </div>
-            </section>
           </aside>
         </section>
       </div>

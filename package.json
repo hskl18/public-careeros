@@ -1,7 +1,7 @@
 {
   "name": "careeros",
   "version": "0.1.0",
-  "description": "Next.js demo of the CareerOC multi-agent job mailbox pipeline with Gmail readonly sync and Gemma via Ollama Cloud.",
+  "description": "CareerOS public hackathon demo: a Gemma-powered recruiting inbox pipeline with optional Gmail sync and review gates.",
   "keywords": [
     "careeros",
     "careeroc",
@@ -32,7 +32,9 @@
     "start": "next start",
     "check": "tsc --noEmit",
     "test": "vitest run",
+    "smoke:browser": "tsx tools/browser-smoke.ts",
     "smoke:ollama": "tsx tools/ollama-cloud-smoke.ts",
+    "release:check": "bash scripts/public-safety-check.sh && pnpm check && pnpm test && pnpm build && pnpm smoke:browser && pnpm smoke:ollama && git diff --check",
     "ci": "pnpm check && pnpm test && pnpm build"
   },
   "dependencies": {
@@ -48,6 +50,7 @@
     "@types/node": "22.15.30",
     "@types/react": "19.0.12",
     "@types/react-dom": "19.0.4",
+    "playwright-core": "^1.60.0",
     "tailwindcss": "^4.3.0",
     "tsx": "4.19.4",
     "typescript": "5.8.3",

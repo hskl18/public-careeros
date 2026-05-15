@@ -1,10 +1,25 @@
+import { existsSync, readFileSync } from "fs";
 import { checkOllamaStatus } from "@/lib/model-status";
 
+function loadLocalEnv() {
+  if (!existsSync(".env.local")) return;
+  const raw = readFileSync(".env.local", "utf8");
+  for (const line of raw.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#") || !trimmed.includes("=")) continue;
+    const [key, ...rest] = trimmed.split("=");
+    if (!key || process.env[key] !== undefined) continue;
+    const value = rest.join("=").replace(/^['"]|['"]$/g, "");
+    process.env[key] = value;
+  }
+}
+
 async function main() {
+  loadLocalEnv();
   const report = await checkOllamaStatus({
     enabled: true,
     endpoint: process.env.CAREEROS_OLLAMA_BASE_URL ?? "https://ollama.com",
-    modelTag: process.env.CAREEROS_GEMMA_MODEL ?? "gemma4:e4b",
+    modelTag: process.env.CAREEROS_GEMMA_MODEL ?? "gemma4:31b",
     timeoutMs: 45_000
   });
 

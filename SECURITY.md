@@ -13,9 +13,15 @@ OAuth tokens, deployment secrets, database exports, or local workspace artifacts
   file as an AES-GCM envelope. They must never be included in workspace
   export/import, fixtures, screenshots, docs, commits, or generated release
   artifacts.
+- Gmail OAuth callback handling validates local state and redirects with
+  sanitized statuses only. Provider raw errors and token responses must not be
+  echoed into the UI or logs intended for public sharing.
 - Model traces should store provider, model tag, purpose, confidence, latency,
   bounded errors, and redacted evidence snippets. They should not store full
   source bodies, full prompts, raw model responses, or OAuth tokens.
+- Local audit events are for observability only. They should store bounded
+  action/status/source metadata and must not contain raw Gmail bodies, prompts,
+  model responses, OAuth tokens, API keys, or provider secrets.
 - Low-confidence career state changes must go through a review gate instead of
   silently mutating applications or reminders.
 - State-changing local API routes reject cross-origin browser requests. Direct
@@ -27,7 +33,7 @@ OAuth tokens, deployment secrets, database exports, or local workspace artifacts
 - Ollama/Gemma status checks only connect to Ollama Cloud at
   `https://ollama.com/api`. User-entered model endpoints are blocked to avoid
   turning model setup into a generic outbound fetch surface.
-- Local database files under `.careeros-data/` are user data and must stay out
+- Local workspace files under `.careeros-data/` are user data and must stay out
   of git.
 
 ## Supported Versions

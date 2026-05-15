@@ -1,13 +1,13 @@
 import Link from "next/link";
-import { listByokRoadmapAdapters, listImplementedAdapters, listLocalRoadmapAdapters } from "@/lib/providers";
+import { headers } from "next/headers";
+import { gmailOAuthSetupDiagnostic } from "@/lib/gmail-local";
 import { checkServerOllamaStatus, readServerState } from "@/lib/server-state";
 import { canDeleteLocalWorkspaceData, getStateRepositoryKind } from "@/lib/store";
 
-type SettingsSection = "model" | "runtime" | "local-data" | "gmail" | "imports";
+type SettingsSection = "model" | "local-data" | "gmail" | "imports";
 
 const SECTIONS: ReadonlyArray<{ key: SettingsSection; label: string }> = [
   { key: "model", label: "Model" },
-  { key: "runtime", label: "Runtime" },
   { key: "local-data", label: "Local data" },
   { key: "gmail", label: "Gmail" },
   { key: "imports", label: "Imports" }
@@ -40,36 +40,50 @@ function modelNextStep(status: string, modelTag: string) {
   if (status === "ready") {
     return {
       title: "Ollama Cloud is ready",
-      body: `${modelTag} is available through Ollama Cloud and the bounded health prompt passed. Model-backed proposals still go through review.`
+      body: `${modelTag} passed the readiness check. Model-backed proposals still go to review before state changes.`
     };
   }
   if (status === "model_missing") {
     return {
-      title: "Choose an available Ollama Cloud model",
-      body: `${modelTag} was not listed for this Ollama Cloud account. Update CAREEROS_GEMMA_MODEL or the model tag, then check again.`
+      title: "Model tag is not available",
+      body: `Choose an available Ollama Cloud model tag, then run the check again.`
     };
   }
   if (status === "unavailable") {
     return {
-      title: "Check Ollama Cloud API key or network",
-      body: "CareerOS cannot reach Ollama Cloud. Verify OLLAMA_API_KEY in .env.local, keep the endpoint as https://ollama.com, then check again."
+      title: "Ollama Cloud is not reachable",
+      body: "Check the API key, endpoint, and network. The app still runs in deterministic mode."
     };
   }
   if (status === "disabled") {
     return {
       title: "Optional Ollama Cloud is disabled",
-      body: "First run needs no model. Add OLLAMA_API_KEY to .env.local, choose Enabled, save the endpoint/model tag, then check."
+      body: "First run needs no model. Read the README when you are ready to add Gemma."
     };
   }
   return {
-    title: "Check Ollama Cloud setup",
-    body: "Save the Ollama Cloud endpoint and Gemma tag, then run a readiness check."
+    title: "Check model setup",
+    body: "Save the endpoint and model tag, then run a readiness check."
   };
 }
 
 function localStateLocation(kind: string) {
   if (kind === "json-file") return ".careeros-data/state.json";
   return "in-memory local state";
+}
+
+function requestUrlFromHeaders(headerList: Headers) {
+  const host = headerList.get("x-forwarded-host") ?? headerList.get("host") ?? "localhost:3000";
+  const proto =
+    headerList.get("x-forwarded-proto") ??
+    (host.startsWith("localhost") || host.startsWith("127.0.0.1") ? "http" : "https");
+  return `${proto}://${host}/settings`;
+}
+
+function setupTone(status: "ready" | "optional" | "attention") {
+  if (status === "ready") return "settings-setup-card settings-setup-card--ready";
+  if (status === "attention") return "settings-setup-card settings-setup-card--attention";
+  return "settings-setup-card";
 }
 
 export default async function SettingsPage({
@@ -80,42 +94,29 @@ export default async function SettingsPage({
   const params = (await searchParams) ?? {};
   const rawSection = typeof params.section === "string" ? params.section : undefined;
   const activeSection = resolveSection(rawSection);
+  const requestHeaders = await headers();
+  const gmailSetup = gmailOAuthSetupDiagnostic(requestUrlFromHeaders(requestHeaders));
   const [state, modelStatus] = await Promise.all([readServerState(), checkServerOllamaStatus()]);
   const connector = state.connectorAccounts.find((item) => item.provider === "gmail");
+  const gmailConnected = connector?.status === "connected";
   const lastImport = state.importJobs[0];
   const latestTrace = state.modelTraces[0];
   const modelRuntime = state.modelRuntime;
   const repositoryKind = getStateRepositoryKind();
   const deleteAvailable = canDeleteLocalWorkspaceData();
-  const localMode = modelRuntime.enabled ? "model checks enabled" : "deterministic default";
   const nextModelStep = modelNextStep(modelStatus.status, modelStatus.modelTag);
   const importStatus = typeof params.import === "string" ? params.import : undefined;
-  const implementedAdapters = listImplementedAdapters();
-  const localRoadmapAdapters = listLocalRoadmapAdapters();
-  const byokRoadmapAdapters = listByokRoadmapAdapters();
+  const gmailStatus = typeof params.gmail === "string" ? params.gmail : undefined;
 
   return (
     <main className="app-scroll-main settings-scroll-main">
       <div className="workspace-shell fixed-workspace settings-workspace mx-auto flex w-full max-w-[104rem] flex-col gap-4 px-3 py-4 sm:px-5 sm:py-6">
       <header className="card app-workspace-panel workspace-fixed-top app-page-header p-4 sm:p-5">
         <div>
-          <p className="eyebrow">Settings</p>
-          <h1 className="mt-2 text-base font-semibold text-[var(--text-primary)] sm:text-xl">Runtime settings</h1>
-          <p className="mt-3 max-w-3xl text-sm leading-6 text-[var(--text-secondary)]">
-            CareerOS starts as a clean local workspace. Use this page to connect readonly Gmail, optional Ollama
-            Cloud/Gemma, deterministic fallback, and local-only storage.
+          <h1 className="text-base font-semibold text-[var(--text-primary)] sm:text-xl">Settings</h1>
+          <p className="mt-1 max-w-3xl text-sm leading-6 text-[var(--text-secondary)]">
+            Runtime controls for Gmail, Gemma, and local workspace data. Full setup lives in the README.
           </p>
-        </div>
-        <div className="actions settings-header-actions">
-          <form action="/api/model-status" method="post">
-            <input type="hidden" name="enabled" value={modelRuntime.enabled ? "on" : ""} />
-            <input type="hidden" name="endpoint" value={modelRuntime.endpoint} />
-            <input type="hidden" name="modelTag" value={modelRuntime.modelTag} />
-            <input type="hidden" name="intent" value="check" />
-            <button className="button" type="submit">
-              Check model
-            </button>
-          </form>
         </div>
       </header>
 
@@ -135,56 +136,73 @@ export default async function SettingsPage({
         ))}
       </nav>
 
-      <div className="fact-strip settings-release-strip" aria-label="Local setup guardrails">
-        <span>Ollama Cloud API key from env</span>
-        <span>Gmail readonly sync</span>
-        <span>BYOK roadmap only</span>
-        <span>OAuth token stays local</span>
-        <span>DELETE LOCAL DATA confirmation</span>
+      <div className="settings-setup-panel" aria-label="Current setup status">
+        <article className={setupTone("ready")}>
+          <span>Runs now</span>
+          <strong>Deterministic mode</strong>
+          <small>No Gmail, API key, hosted DB, or model download required.</small>
+        </article>
+        <article className={setupTone(gmailConnected ? "ready" : "optional")}>
+          <span>Gmail</span>
+          <strong>{gmailConnected ? "Readonly sync connected" : "Optional connector"}</strong>
+          <small>{gmailConnected ? "Recruiting snippets can feed review-gated records." : "Use only when you want real inbox evidence."}</small>
+          <Link href="/settings?section=gmail">Configure</Link>
+        </article>
+        <article className={setupTone(modelStatus.status === "ready" ? "ready" : modelStatus.status === "disabled" ? "optional" : "attention")}>
+          <span>Gemma</span>
+          <strong>{modelStatus.status === "ready" ? `${modelStatus.modelTag} ready` : nextModelStep.title}</strong>
+          <small>{modelStatus.status === "ready" ? "Model-backed proposals still require review." : "Optional model-backed proposals."}</small>
+          <Link href="/settings">Configure</Link>
+        </article>
+        <article className={setupTone(deleteAvailable ? "ready" : "optional")}>
+          <span>Local data</span>
+          <strong>{localStateLocation(repositoryKind)}</strong>
+          <small>Export/import/delete this workspace only.</small>
+          <Link href="/settings?section=local-data">Manage</Link>
+        </article>
       </div>
+
+      <section className="settings-first-run-strip" aria-label="First run setup checklist">
+        <div>
+          <span>Run locally</span>
+          <code>pnpm install && pnpm dev</code>
+        </div>
+        <div>
+          <span>Configure env</span>
+          <code>.env.local</code>
+        </div>
+        <div>
+          <span>Gmail</span>
+          <strong>Readonly OAuth only</strong>
+        </div>
+        <div>
+          <span>Gemma</span>
+          <strong>Ollama Cloud API key</strong>
+        </div>
+        <p>No desktop Ollama server and no local model download are required for this public demo.</p>
+      </section>
 
       <div className="workspace-scroll-region shell-scroll-region">
         {activeSection === "model" ? (
           <section className="section model-connect-section" id="settings-model">
         <div className="section-title">
           <div>
-            <p className="eyebrow">Optional Ollama Cloud</p>
-            <h2>Connect Gemma for model-backed proposals</h2>
+            <h2>Gemma model checks</h2>
             <p className="subtle">
               {modelStatus.status === "ready"
-                ? `Gemma (${modelStatus.modelTag}) is reachable through Ollama Cloud and passed the bounded health prompt. Model-backed proposals still go through the review gate before they touch application state.`
-                : "Deterministic fallback is active right now. To connect Gemma, add OLLAMA_API_KEY to .env.local, keep endpoint https://ollama.com, set the model tag, then run a readiness check."}
+                ? `Gemma (${modelStatus.modelTag}) is ready. Review gates still protect every model-backed update.`
+                : "Optional. The app works now in deterministic mode; use README for env setup when you want Gemma-backed proposals."}
             </p>
           </div>
           <span className={modelBadge(modelStatus.status)}>{modelStatus.status}</span>
         </div>
         <div className="model-connect-layout">
-          <div className="model-connection-guide" aria-label="How CareerOS connects to Ollama Cloud">
-            <article>
-              <span>1. Cloud API key</span>
-              <strong>OLLAMA_API_KEY in .env.local</strong>
-              <code>OLLAMA_API_KEY=...</code>
-              <small>Key is read from env only; it is not saved in workspace state, UI forms, exports, or traces.</small>
-            </article>
-            <article>
-              <span>2. Web app</span>
-              <strong>CareerOS calls Ollama Cloud</strong>
-              <code>https://ollama.com/api/generate</code>
-              <small>Next.js API routes send bounded prompts server-side; the browser never sees the key.</small>
-            </article>
-            <article>
-              <span>3. Review gate</span>
-              <strong>Save endpoint + tag</strong>
-              <code>{modelRuntime.endpoint} · {modelRuntime.modelTag}</code>
-              <small>Choose Enabled, then Save and check. Ready means model-backed proposals can run through review.</small>
-            </article>
-          </div>
           <form className="model-connect-form" action="/api/model-status" method="post">
             <label>
               <span className="label">Connection mode</span>
               <select name="enabled" defaultValue={modelRuntime.enabled ? "on" : "off"}>
                 <option value="off">Disabled - deterministic fallback</option>
-                <option value="on">Enabled - check Ollama Cloud</option>
+                <option value="on">Enabled - use Ollama Cloud API</option>
               </select>
             </label>
             <label>
@@ -193,11 +211,11 @@ export default async function SettingsPage({
             </label>
             <label>
               <span className="label">Gemma model tag</span>
-              <input name="modelTag" defaultValue={modelRuntime.modelTag} placeholder="gemma4:e4b" />
+              <input name="modelTag" defaultValue={modelRuntime.modelTag} placeholder="gemma4:31b" />
             </label>
             <div className="model-connect-actions">
               <button className="button secondary" name="intent" type="submit" value="save">
-                Save model setup
+                Save setup
               </button>
               <button className="button primary" name="intent" type="submit" value="check">
                 Save and check
@@ -210,80 +228,33 @@ export default async function SettingsPage({
               <strong>{nextModelStep.title}</strong>
               <span>{nextModelStep.body}</span>
             </div>
-            <code>OLLAMA_API_KEY=...</code>
-          </div>
-          <div className="model-command-card">
-            <p className="eyebrow">Env setup</p>
-            <code>CAREEROS_OLLAMA_BASE_URL=https://ollama.com</code>
-            <span>No key is required for first run. Key is only read server-side when model checks are enabled.</span>
+            <a
+              className="button secondary"
+              href="https://github.com/hskl18/public-careeros#optional-gemma4-through-ollama-cloud"
+              target="_blank"
+              rel="noreferrer"
+            >
+              Read README setup
+            </a>
           </div>
         </div>
         <div className="state-matrix settings-status-grid">
           <div className="state-cell">
             <span className="label">Fallback</span>
             <strong>{modelStatus.status === "disabled" ? "Active" : "Available"}</strong>
-            <small>Rules and review gates work without Ollama Cloud.</small>
+            <small>Works without Ollama Cloud.</small>
           </div>
           <div className="state-cell">
             <span className="label">Latest check</span>
             <strong>{modelStatus.latencyMs ? `${modelStatus.latencyMs}ms` : "Not connected"}</strong>
-            <small>{modelStatus.diagnostic}</small>
+            <small>{modelStatus.status === "disabled" ? "No check runs while disabled." : modelStatus.diagnostic}</small>
           </div>
           <div className="state-cell">
             <span className="label">Latest trace</span>
             <strong>{latestTrace?.status ?? "none"}</strong>
-            <small>{latestTrace?.diagnostic ?? "Trace metadata appears after processing or status checks."}</small>
+            <small>{latestTrace ? latestTrace.task : "Appears after a model-backed action."}</small>
           </div>
         </div>
-        <div className="settings-provider-panel" aria-label="Provider adapter boundaries">
-          <div className="section-title compact">
-            <div>
-              <p className="eyebrow">Model router boundary</p>
-              <h3>Implemented paths stay separate from roadmap adapters</h3>
-              <p className="subtle">
-                The public app only runs deterministic fallback and optional Gemma via Ollama Cloud. BYOK providers are
-                roadmap labels until encrypted local credential storage exists.
-              </p>
-            </div>
-          </div>
-          <div className="settings-provider-grid">
-            <article>
-              <span>Implemented now</span>
-              <strong>{implementedAdapters.map((adapter) => adapter.label).join(" · ")}</strong>
-              <small>The app can open as a clean workspace; Gmail sync starts real pipeline data, and Ollama Cloud is only required for model-backed runs.</small>
-            </article>
-            <article>
-              <span>Advanced runtime roadmap</span>
-              <strong>{localRoadmapAdapters.map((adapter) => adapter.label).join(" · ")}</strong>
-              <small>Adapter metadata only. These do not execute code or call local processes.</small>
-            </article>
-            <article>
-              <span>BYOK roadmap only</span>
-              <strong>{byokRoadmapAdapters.map((adapter) => adapter.label).join(" · ")}</strong>
-              <small>Blocked on encrypted credential storage, redaction rules, and adapter tests.</small>
-            </article>
-          </div>
-        </div>
-          </section>
-        ) : null}
-
-        {activeSection === "runtime" ? (
-          <section className="grid three settings-runtime-summary" id="settings-runtime">
-        <article className="runtime-card">
-          <p className="eyebrow">Persistence</p>
-          <strong>{repositoryKind}</strong>
-          <span>{state.applications.length} applications in local state</span>
-        </article>
-        <article className="runtime-card runtime-card--featured">
-          <p className="eyebrow">Model mode</p>
-          <strong>{modelStatus.status}</strong>
-          <span>{localMode}. Save and check above to connect Gemma.</span>
-        </article>
-        <article className="runtime-card">
-          <p className="eyebrow">Connector mode</p>
-          <strong>{connector?.status ?? "not_configured"}</strong>
-          <span>Gmail is optional; readonly tokens stay local under .careeros-data</span>
-        </article>
           </section>
         ) : null}
 
@@ -291,9 +262,8 @@ export default async function SettingsPage({
           <section className="section" id="settings-local-data">
         <div className="section-title">
           <div>
-            <p className="eyebrow">Local data</p>
             <h2>Workspace storage</h2>
-            <p className="subtle">Reset, export, import, and delete only affect this local workspace.</p>
+            <p className="subtle">Export, import, and delete only affect this local workspace.</p>
           </div>
           <span className="badge ok">{repositoryKind}</span>
         </div>
@@ -315,11 +285,6 @@ export default async function SettingsPage({
           </div>
         </div>
         <div className="actions">
-          <form action="/api/reset" method="post">
-            <button className="button secondary" type="submit">
-              Reset workspace
-            </button>
-          </form>
           <a className="button secondary" href="/api/local-data/export">
             Export JSON
           </a>
@@ -380,7 +345,6 @@ export default async function SettingsPage({
           <section className="section" id="settings-gmail">
         <div className="section-title">
           <div>
-            <p className="eyebrow">Optional Gmail connector</p>
             <h2>Gmail readonly sync</h2>
             <p className="subtle">
               Connect a local Google OAuth client, then sync recent recruiting mail into the Gemma/review pipeline.
@@ -396,6 +360,11 @@ export default async function SettingsPage({
             <small>{connector?.message ?? "Connectors remain disabled until configured."}</small>
           </div>
           <div className="tile">
+            <span className="label">Google callback URL</span>
+            <strong className="code">{gmailSetup.redirectUri}</strong>
+            <small>Paste this exact value into Google OAuth Authorized redirect URIs.</small>
+          </div>
+          <div className="tile">
             <span className="label">Safe boundary</span>
             <strong>Local token file</strong>
             <small>Readonly OAuth token stays under `.careeros-data` and is excluded from git.</small>
@@ -405,6 +374,41 @@ export default async function SettingsPage({
             <strong>Sync then review</strong>
             <small>Gmail snippets flow through triage, extraction, Ollama Cloud/Gemma, and the review gate.</small>
           </div>
+        </div>
+        {gmailStatus ? (
+          <div className="connector-diagnostic connector-diagnostic--warn">
+            <strong>
+              {gmailStatus === "redirect_uri_mismatch_local"
+                ? "Gmail redirect URI needs attention"
+                : "Gmail OAuth returned to settings"}
+            </strong>
+            <p>
+              {gmailStatus === "redirect_uri_mismatch_local"
+                ? gmailSetup.nextStep
+                : "The Gmail OAuth result was sanitized. Recheck the callback URL below, then retry when the Google client is configured."}
+            </p>
+          </div>
+        ) : null}
+        <div className={gmailSetup.status === "ready" ? "connector-diagnostic" : "connector-diagnostic connector-diagnostic--warn"}>
+          <div>
+            <span className="label">OAuth setup diagnostic</span>
+            <strong>{gmailSetup.status.replace("_", " ")}</strong>
+            <p>{gmailSetup.nextStep}</p>
+          </div>
+          <dl>
+            <div>
+              <dt>Current app origin</dt>
+              <dd>{gmailSetup.requestedOrigin}</dd>
+            </div>
+            <div>
+              <dt>Callback origin</dt>
+              <dd>{gmailSetup.redirectOrigin ?? "invalid callback URL"}</dd>
+            </div>
+            <div>
+              <dt>Origin match</dt>
+              <dd>{gmailSetup.originMatchesRequest ? "yes" : "no"}</dd>
+            </div>
+          </dl>
         </div>
         <div className="connector-demo-actions">
           <div className="inline-between">
@@ -417,20 +421,24 @@ export default async function SettingsPage({
           </p>
           <div className="actions">
             <form action="/api/connectors/gmail/connect" method="post">
-              <button className="button secondary" type="submit">
-                Connect Gmail
+              <button className="button primary" type="submit">
+                {connector?.status === "needs_attention" ? "Reconnect Gmail" : "Connect Gmail"}
               </button>
             </form>
-            <form action="/api/connectors/gmail/sync" method="post">
-              <button className="button secondary" type="submit">
-                Sync recruiting mail
-              </button>
-            </form>
-            <form action="/api/connectors/gmail/disconnect" method="post">
-              <button className="button secondary" type="submit">
-                Disconnect
-              </button>
-            </form>
+            {gmailConnected ? (
+              <>
+                <form action="/api/connectors/gmail/sync" method="post">
+                  <button className="button primary" type="submit">
+                    Sync recruiting mail
+                  </button>
+                </form>
+                <form action="/api/connectors/gmail/disconnect" method="post">
+                  <button className="button secondary" type="submit">
+                    Disconnect
+                  </button>
+                </form>
+              </>
+            ) : null}
           </div>
         </div>
           </section>
@@ -440,7 +448,6 @@ export default async function SettingsPage({
           <section className="section" id="settings-imports">
         <div className="section-title">
           <div>
-            <p className="eyebrow">Import jobs</p>
             <h2>Processing history</h2>
           </div>
           <span className="badge">{state.importJobs.length}</span>

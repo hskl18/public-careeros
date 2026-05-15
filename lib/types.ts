@@ -30,6 +30,7 @@ export type ReviewStatus = "open" | "accepted" | "dismissed" | "corrected";
 export type NotificationStatus = "unread" | "read" | "dismissed";
 export type ImportJobStatus = "pending" | "processed" | "failed";
 export type ConnectorStatus = "disabled" | "not_configured" | "disconnected" | "connected" | "needs_attention";
+export type AuditEventStatus = "started" | "succeeded" | "failed" | "blocked";
 export type AgentName =
   | "mailbox_triage"
   | "workflow_extraction"
@@ -220,6 +221,18 @@ export interface ConnectorAccount {
   updatedAt: string;
 }
 
+export interface AuditEvent {
+  id: string;
+  action: string;
+  status: AuditEventStatus;
+  summary: string;
+  actor: "local_user" | "system";
+  sourceType?: "import" | "review" | "reminder" | "resume" | "settings" | "connector" | "model" | "local_data";
+  sourceId?: string;
+  metadata?: Record<string, string | number | boolean>;
+  createdAt: string;
+}
+
 export interface MailboxMessage {
   id: string;
   threadId: string;
@@ -278,6 +291,7 @@ export interface CareerOSState {
   modelTraces: ModelTrace[];
   importJobs: ImportJob[];
   connectorAccounts: ConnectorAccount[];
+  auditEvents: AuditEvent[];
 }
 
 export interface LocalImportRecord {

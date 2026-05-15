@@ -1,5 +1,5 @@
-import Link from "next/link";
 import { AgentFlowAnimation } from "@/components/agent-flow-animation";
+import { ActionLink } from "@/components/ui";
 import { agentOperatingContracts, careerOsFullAgentAlignment } from "@/lib/agent-contracts";
 import { pipelineAgentDefinitions } from "@/lib/agent-pipeline";
 import { checkServerOllamaStatus, readServerState } from "@/lib/server-state";
@@ -45,74 +45,81 @@ export default async function AgentsPage() {
 
   return (
     <main className="app-scroll-main">
-      <div className="workspace-shell fixed-workspace mx-auto flex w-full max-w-[104rem] flex-col gap-4 px-3 py-4 sm:px-5 sm:py-6">
+      <div className="workspace-shell fixed-workspace agents-workspace mx-auto flex w-full max-w-[104rem] flex-col gap-4 px-3 py-4 sm:px-5 sm:py-6">
         <header className="card app-workspace-panel workspace-fixed-top app-page-header p-4 sm:p-5">
           <div>
-            <p className="eyebrow">Agent operating system</p>
-            <h1 className="mt-2 text-base font-semibold text-[var(--text-primary)] sm:text-xl">
+            <h1 className="text-base font-semibold text-[var(--text-primary)] sm:text-xl">
               CareerOS agent contracts
             </h1>
-            <p className="mt-3 max-w-3xl text-sm leading-6 text-[var(--text-secondary)]">
-              This is the product boundary behind CareerOS: each agent has a narrow job, bounded prompting, workspace
-              memory, review gates, and explicit rules for what it cannot do. CareerOS stays an agentic Gmail mailbox
-              pipeline instead of becoming a generic tracker.
+            <p className="mt-1 max-w-3xl text-sm leading-6 text-[var(--text-secondary)]">
+              Prompt boundaries, memory rules, review gates, and cost limits for the mailbox pipeline agents.
             </p>
           </div>
           <div className="actions">
-            <Link className="button primary" href="/settings?section=gmail">
+            <ActionLink variant="primary" href="/settings?section=gmail">
               Connect Gmail
-            </Link>
-            <Link className="button secondary" href="/judge-demo">
+            </ActionLink>
+            <ActionLink href="/judge-demo">
               Judge demo
-            </Link>
-            <Link className="button secondary" href="/api/pipeline">
+            </ActionLink>
+            <ActionLink href="/api/pipeline">
               Pipeline JSON
-            </Link>
+            </ActionLink>
           </div>
         </header>
 
         <div className="workspace-scroll-region shell-scroll-region">
-          <AgentFlowAnimation modelStatus={modelStatus.status} modelTag={modelStatus.modelTag} />
-
-          <section className="grid three">
-            <article className="runtime-card runtime-card--featured">
-              <p className="eyebrow">Model path</p>
-              <strong>{modelStatus.status}</strong>
-              <span>{modelStatus.modelTag} · {modelStatus.diagnostic}</span>
-            </article>
-            <article className="runtime-card">
-              <p className="eyebrow">Latest model trace</p>
-              <strong>{latestTrace?.task ?? "No model trace yet"}</strong>
-              <span>
-                {latestTrace
-                  ? `${latestTrace.provider}/${latestTrace.modelTag ?? "rules"} · ${latestTrace.latencyMs ?? 0}ms`
-                  : "Run a model check or import analysis to create one."}
-              </span>
-            </article>
-            <article className="runtime-card">
-              <p className="eyebrow">Review gate</p>
-              <strong>{openReviews.length} open</strong>
-              <span>Model-backed and uncertain changes wait for accept, correct, or dismiss.</span>
-            </article>
+          <section className="agents-hero-panel">
+            <div className="agents-hero-main">
+              <p className="eyebrow">Agent contract map</p>
+              <h2>Recruiting mail becomes reviewed state through six bounded agents.</h2>
+              <p className="subtle">
+                Read the flow left to right: bounded email evidence enters, agents produce a typed proposal, and the
+                review gate decides whether local application state can change.
+              </p>
+              <AgentFlowAnimation modelStatus={modelStatus.status} modelTag={modelStatus.modelTag} />
+            </div>
+            <aside className="agents-runtime-stack" aria-label="Runtime and review summary">
+              <article className="runtime-card runtime-card--featured">
+                <img className="runtime-card__mascot" src="/mascots/pixel-inbox-buddy-secure.svg" alt="" aria-hidden="true" />
+                <p className="eyebrow">Model path</p>
+                <strong>{modelStatus.status}</strong>
+                <span>{modelStatus.modelTag} · {modelStatus.diagnostic}</span>
+              </article>
+              <article className="runtime-card">
+                <p className="eyebrow">Latest trace</p>
+                <strong>{latestTrace?.task ?? "No trace yet"}</strong>
+                <span>
+                  {latestTrace
+                    ? `${latestTrace.provider}/${latestTrace.modelTag ?? "rules"} · ${latestTrace.latencyMs ?? 0}ms`
+                    : "Run a model check or import analysis to create one."}
+                </span>
+              </article>
+              <article className="runtime-card">
+                <p className="eyebrow">Review gate</p>
+                <strong>{openReviews.length} open</strong>
+                <span>Uncertain updates wait for accept, correct, or dismiss.</span>
+              </article>
+            </aside>
           </section>
 
-          <section className="section">
+          <section className="section agents-memory-section">
             <div className="section-title">
               <div>
                 <p className="eyebrow">Agent memory</p>
-                <h2>What the agents are allowed to remember</h2>
+                <h2>Memory boundary</h2>
                 <p className="subtle">
-                  Memory is normalized workspace state, not a hidden prompt dump. Full Gmail bodies, OAuth tokens, provider
-                  keys, raw prompts, and raw model responses stay outside the workspace model.
+                  Agents remember normalized workspace state only. Full Gmail bodies, OAuth tokens, provider keys, raw
+                  prompts, and raw model responses stay outside the workspace model.
                 </p>
               </div>
             </div>
-            <div className="grid three">
+            <div className="agents-memory-grid">
               {memoryFacts.map(([label, value]) => (
                 <div className="tile" key={label}>
                   <span className="label">{label}</span>
                   <strong>{value}</strong>
-                  <small>Stored under `.careeros-data` or derived from workspace state.</small>
+                  <small>Local workspace state</small>
                 </div>
               ))}
             </div>
@@ -147,22 +154,22 @@ export default async function AgentsPage() {
                       </span>
                       <span className="badge">{contract.family}</span>
                     </div>
-                    <div className="agent-source-map" aria-label={`${contract.label} CareerOS source souls`}>
+                    <div className="agent-source-map" aria-label={`${contract.label} CareerOS source contracts`}>
                       {contract.careerOsSouls.map((soul) => (
                         <span key={soul}>{soul}</span>
                       ))}
                     </div>
                     <dl className="agent-boundary-list">
                       <div>
-                        <dt>Prompt/input</dt>
+                        <dt>Input boundary</dt>
                         <dd>{contract.promptBoundary}</dd>
                       </div>
                       <div>
-                        <dt>Memory</dt>
+                        <dt>Memory boundary</dt>
                         <dd>{contract.memoryBoundary}</dd>
                       </div>
                       <div>
-                        <dt>Cost/runtime</dt>
+                        <dt>Runtime boundary</dt>
                         <dd>{contract.costBoundary}</dd>
                       </div>
                     </dl>

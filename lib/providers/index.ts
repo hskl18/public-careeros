@@ -37,7 +37,7 @@ export interface ProviderAdapter {
   unlockGate?: string;
   /** Optional setup hint. */
   helpCommand?: string;
-  /** Free-form roadmap note; surfaced in `docs/provider-research.md`. */
+  /** Free-form roadmap note; surfaced in the UI and kept aligned with `docs/roadmap.md`. */
   researchNote?: string;
 }
 
@@ -72,7 +72,7 @@ const providerAdapters: ReadonlyArray<ProviderAdapter> = [
     unlockGate:
       "Need a bounded local-process boundary (subprocess or local HTTP) plus schema-validated output before CareerOS opens a second local runtime.",
     researchNote:
-      "See docs/provider-research.md for the promotion rules and why this stays roadmap-only."
+      "See docs/roadmap.md for the promotion rules and why this stays roadmap-only."
   },
   {
     id: "llama-cpp",
@@ -83,7 +83,7 @@ const providerAdapters: ReadonlyArray<ProviderAdapter> = [
     summary:
       "Portable C++ runtime that can host Gemma 4 quantizations. Research-only until CareerOS has a separate advanced-runtime boundary.",
     unlockGate: "Same boundary as MLX: stable local endpoint + schema validation + tests.",
-    researchNote: "See docs/provider-research.md."
+    researchNote: "See docs/roadmap.md."
   },
   {
     id: "litert",
@@ -95,7 +95,7 @@ const providerAdapters: ReadonlyArray<ProviderAdapter> = [
       "Google's on-device runtime (LiteRT, formerly TFLite). Best fit for the mobile-wearable hackathon track; unlikely to be the primary path for a desktop console.",
     unlockGate:
       "Needs a mobile/edge surface story before CareerOS embeds a LiteRT pipeline; out of scope for the laptop-first public RC.",
-    researchNote: "See docs/provider-research.md."
+    researchNote: "See docs/roadmap.md."
   },
   {
     id: "vllm",
@@ -107,7 +107,7 @@ const providerAdapters: ReadonlyArray<ProviderAdapter> = [
       "High-throughput GPU serving runtime. Useful for self-hosted Other-Candidate scenarios, not part of the public demo runtime.",
     unlockGate:
       "Needs a deployment surface other than the laptop dev script. Belongs to Other Candidate hosted, not the public RC.",
-    researchNote: "See docs/provider-research.md."
+    researchNote: "See docs/roadmap.md."
   },
   {
     id: "sglang",
@@ -118,7 +118,7 @@ const providerAdapters: ReadonlyArray<ProviderAdapter> = [
     summary:
       "Structured-generation-friendly serving runtime. Compelling for the JSON-only output shape CareerOS already uses, but heavier than Ollama for first-run users.",
     unlockGate: "Same deployment-surface constraint as vLLM.",
-    researchNote: "See docs/provider-research.md."
+    researchNote: "See docs/roadmap.md."
   },
   {
     id: "mtp-drafters",
@@ -130,7 +130,7 @@ const providerAdapters: ReadonlyArray<ProviderAdapter> = [
       "Multi-token speculative drafters for lower-latency Gemma inference. Research-only until a stable upstream runtime API exists.",
     unlockGate:
       "Wait for the upstream runtime to publish a stable drafter API and benchmarks before exposing it as any runtime option.",
-    researchNote: "See docs/provider-research.md."
+    researchNote: "See docs/roadmap.md."
   },
   {
     id: "openai",

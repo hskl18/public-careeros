@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { AgentFlowAnimation } from "@/components/agent-flow-animation";
 import { listProviderAdapters } from "@/lib/providers";
 import { checkServerOllamaStatus } from "@/lib/server-state";
 
@@ -137,11 +136,15 @@ export default async function JudgeDemoPage() {
         <header className="agent-console-hero workspace-fixed-top">
           <div>
             <p className="eyebrow">Kaggle Gemma 4 Good judge demo</p>
-            <h1>CareerOC demo: your inbox becomes your job pipeline</h1>
+            <h1>CareerOS public demo: recruiting mail becomes a reviewed job pipeline</h1>
             <p>
-              CareerOS is the open-source version of the Other Candidate workflow at careeroc.com: recruiting
-              Gmail evidence becomes structured application state through Gemma via Ollama Cloud, bounded evidence, and
-              review gates before mutation.
+              CareerOS is the limited open-source hackathon demo of the Other Candidate workflow at careeroc.com. This
+              route uses sanitized sample mail, requires no Gmail or model key, and shows how Gemma via Ollama Cloud,
+              deterministic fallback, evidence, and review gates work before state mutation.
+            </p>
+            <p className="review-demo-hint">
+              It is not the full hosted Other Candidate source; it is the public demo/source repo for the agentic
+              recruiting pipeline.
             </p>
             <div className="fact-strip pain-signal-row" aria-label="Job-search pain signals reflected in this demo">
               {painSignals.map((signal) => (
@@ -156,6 +159,7 @@ export default async function JudgeDemoPage() {
             </div>
           </div>
           <aside className="agent-runtime-panel" aria-label="Model runtime status">
+            <img className="agent-runtime-mascot" src="/mascots/pixel-inbox-buddy-review-gate.svg" alt="" aria-hidden="true" />
             <span className={`agent-runtime-led ${isGemmaReady ? "ready" : "fallback"}`} />
             <p className="eyebrow">Model path</p>
             <strong>Gemma via Ollama Cloud</strong>
@@ -165,8 +169,6 @@ export default async function JudgeDemoPage() {
         </header>
 
         <div className="workspace-scroll-region agent-console-scroll">
-          <AgentFlowAnimation modelStatus={modelStatus.status} modelTag={modelStatus.modelTag} />
-
           <section className="agent-console-grid">
             <aside className="agent-pipeline-panel">
               <div className="agent-panel-head">

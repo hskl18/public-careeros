@@ -181,11 +181,9 @@ export default async function ReviewPage({
       <div className="workspace-shell review-workspace mx-auto grid w-full max-w-[104rem] gap-4 px-3 py-4 sm:px-5 sm:py-6">
         <section className="card app-workspace-panel review-command-panel p-4 sm:p-5">
           <div>
-            <p className="eyebrow">Manual review</p>
-            <h1 className="mt-2 text-base font-semibold text-[var(--text-primary)] sm:text-xl">Review queue</h1>
-            <p className="mt-3 max-w-3xl text-sm leading-6 text-[var(--text-secondary)]">
-              Approve only the updates you trust. Gmail imports, deterministic rules, and Gemma-backed proposals must
-              carry evidence, confidence, and trace data before they can mutate application state.
+            <h1 className="text-base font-semibold text-[var(--text-primary)] sm:text-xl">Review queue</h1>
+            <p className="mt-1 max-w-3xl text-sm leading-6 text-[var(--text-secondary)]">
+              Accept, correct, or dismiss evidence-backed updates before they mutate application state.
             </p>
           </div>
           <nav className="tab-strip review-quick-filters" aria-label="Review quick filter" role="tablist">
@@ -227,17 +225,17 @@ export default async function ReviewPage({
                 <p className="eyebrow">No review work yet</p>
                 <h2>The review gate wakes up after Gmail sync or import</h2>
                 <p className="subtle">
-                  Clean workspaces start with no fake blockers. Sync Gmail recruiting mail or import records; uncertain
-                  deadlines, model-backed proposals, and low-confidence extractions will appear here for accept, correct,
-                  or dismiss.
+                  Clean workspaces start with no fake blockers. The judge demo shows a sanitized blocked update; real
+                  uncertain deadlines, model-backed proposals, and low-confidence extractions appear here after Gmail
+                  sync or JSON import.
                 </p>
               </div>
               <span className="badge ok">clear</span>
             </div>
             <div className="actions">
-              <Link className="button primary" href="/settings?section=gmail">Connect Gmail</Link>
-              <Link className="button secondary" href="/applications">Open applications</Link>
-              <Link className="button secondary" href="/judge-demo">Inspect sample review gate</Link>
+              <Link className="button primary" href="/judge-demo">Inspect sample review gate</Link>
+              <Link className="button secondary" href="/settings?section=gmail">Connect Gmail</Link>
+              <Link className="button secondary" href="/settings">Set up Gemma</Link>
             </div>
           </section>
         ) : null}
@@ -246,7 +244,6 @@ export default async function ReviewPage({
           <div className="card app-workspace-panel review-queue-panel overflow-hidden p-0">
             <div className="review-panel-head">
               <div>
-                <p className="eyebrow">Decision inbox</p>
                 <h2>Review filters</h2>
                 <p className="subtle">
                   Showing {visibleOpen.length} of {filteredReviews.length} filtered items · {filteredOpen.length} open

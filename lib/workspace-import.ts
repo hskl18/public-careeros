@@ -1,4 +1,5 @@
 import { isAllowedOllamaModelEndpoint } from "./api-security";
+import { appendAuditEvent, createAuditEvent } from "./audit";
 import { newId, nowIso } from "./id";
 import { currentWorkspaceSchemaVersion } from "./store";
 import type {
@@ -44,7 +45,8 @@ const stateKeys = [
   "modelRuntime",
   "modelTraces",
   "importJobs",
-  "connectorAccounts"
+  "connectorAccounts",
+  "auditEvents"
 ] as const;
 
 const applicationStages = ["wishlist", "applied", "recruiter_reply", "assessment", "interview", "offer", "rejected"] as const;
@@ -67,6 +69,8 @@ const agentNames = [
   "model_router"
 ] as const;
 const agentStatuses = ["deterministic", "model_ready", "review_blocked", "fallback", "roadmap"] as const;
+const auditStatuses = ["started", "succeeded", "failed", "blocked"] as const;
+const auditSourceTypes = ["import", "review", "reminder", "resume", "settings", "connector", "model", "local_data"] as const;
 
 const dangerousKeyPattern =
   /(access[_-]?token|refresh[_-]?token|oauth|client[_-]?secret|api[_-]?key|provider[_-]?key|password|raw[_-]?body|gmail[_-]?body|email[_-]?body|body[_-]?html|html[_-]?body|headers|payload|full[_-]?prompt|raw[_-]?response|raw[_-]?model[_-]?response|model[_-]?response|data[_-]?dump)/i;
@@ -598,6 +602,48 @@ function validateConnectorAccount(value: unknown, path: string) {
   };
 }
 
+function validateAuditMetadata(value: unknown, path: string) {
+  if (value === undefined) return undefined;
+  if (!isRecord(value)) throw new Error(`${path} must be an object.`);
+  const record = validateObject(value, Object.keys(value), path);
+  const entries = Object.entries(record);
+  if (entries.length > 12) throw new Error(`${path} must be bounded.`);
+  const metadata: Record<string, string | number | boolean> = {};
+  for (const [key, item] of entries) {
+    if (key.length > 48) throw new Error(`${path}.${key} key is too long.`);
+    if (typeof item === "string") {
+      if (item.length > 160) throw new Error(`${path}.${key} must be bounded.`);
+      metadata[key] = item;
+    } else if (typeof item === "number" && Number.isFinite(item)) {
+      metadata[key] = item;
+    } else if (typeof item === "boolean") {
+      metadata[key] = item;
+    } else {
+      throw new Error(`${path}.${key} is unsupported.`);
+    }
+  }
+  return metadata;
+}
+
+function validateAuditEvent(value: unknown, path: string) {
+  const record = validateObject(
+    value,
+    ["id", "action", "status", "summary", "actor", "sourceType", "sourceId", "metadata", "createdAt"],
+    path
+  );
+  return {
+    id: requiredString(record, "id", path),
+    action: requiredString(record, "action", path, 120),
+    status: enumValue(record, "status", path, auditStatuses),
+    summary: requiredString(record, "summary", path, 400),
+    actor: enumValue(record, "actor", path, ["local_user", "system"] as const),
+    sourceType: optionalEnumValue(record, "sourceType", path, auditSourceTypes),
+    sourceId: optionalString(record, "sourceId", path),
+    metadata: validateAuditMetadata(record.metadata, `${path}.metadata`),
+    createdAt: requiredString(record, "createdAt", path)
+  };
+}
+
 function validateMailboxMessage(value: unknown, path: string) {
   const record = validateObject(value, ["id", "threadId", "fromLabel", "subject", "snippet", "receivedAt", "sourceLabel"], path);
   return {
@@ -684,7 +730,9 @@ function validateStateShape(value: unknown): CareerOSState {
     modelRuntime: validateModelRuntime(record.modelRuntime, "state.modelRuntime"),
     modelTraces: arrayOf(record, "modelTraces", "state", 20_000, validateModelTrace),
     importJobs: arrayOf(record, "importJobs", "state", 10_000, validateImportJob),
-    connectorAccounts: arrayOf(record, "connectorAccounts", "state", 100, validateConnectorAccount)
+    connectorAccounts: arrayOf(record, "connectorAccounts", "state", 100, validateConnectorAccount),
+    auditEvents:
+      record.auditEvents === undefined ? [] : arrayOf(record, "auditEvents", "state", 5_000, validateAuditEvent)
   };
 }
 
@@ -720,7 +768,8 @@ export function parseWorkspaceJson(raw: string): WorkspaceImportValidationResult
 
 export function withWorkspaceImportJob(state: CareerOSState): CareerOSState {
   const createdAt = nowIso();
-  return {
+  return appendAuditEvent(
+    {
     ...state,
     importJobs: [
       {
@@ -733,5 +782,18 @@ export function withWorkspaceImportJob(state: CareerOSState): CareerOSState {
       },
       ...state.importJobs
     ]
-  };
+    },
+    createAuditEvent({
+      action: "workspace.imported",
+      status: "succeeded",
+      summary: "Validated CareerOS workspace JSON import replaced local state.",
+      actor: "local_user",
+      sourceType: "local_data",
+      metadata: {
+        applications: state.applications.length,
+        reviewItems: state.reviewItems.length,
+        auditEvents: state.auditEvents.length
+      }
+    })
+  );
 }

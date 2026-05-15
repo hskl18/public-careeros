@@ -1,7 +1,27 @@
 # CareerOS
 
-A simple local Next.js demo of the CareerOC / Other Candidate job-mailbox
-pipeline for the Kaggle Gemma 4 Good hackathon.
+CareerOS is the public Gemma hackathon demo of the CareerOS / Other Candidate
+recruiting inbox pipeline. It is a judge-facing local demo/source repo, not the
+full hosted Other Candidate codebase.
+
+Run it with:
+
+```bash
+pnpm install
+pnpm dev
+```
+
+Then open `http://localhost:3000/judge-demo` for the credential-free judge
+demo. No Gmail account, Ollama Cloud key, hosted database, Docker runtime, or
+model download is required to inspect the full agentic workflow.
+
+What judges should see immediately:
+
+- sanitized mailbox evidence
+- Gemma via Ollama Cloud as the optional model path
+- deterministic fallback when no key is configured
+- evidence -> extraction -> review gate -> application/reminder loop
+- model traces and review gates instead of a generic chatbot transcript
 
 CareerOS turns recruiting email into structured application state with a
 multi-agent workflow. It is intentionally still the CareerOS pipeline, not a
@@ -15,8 +35,9 @@ plain job dashboard:
 6. Model routing through Gemma via Ollama Cloud
 
 The hosted product is **Other Candidate** at `careeroc.com`. This repo is the
-open-source demo: one Next.js app, local state, optional Gmail readonly sync,
-optional Ollama Cloud/Gemma4 analysis, and no separate backend stack.
+open-source hackathon demo: one Next.js app, local JSON state, optional Gmail
+readonly sync, optional Ollama Cloud/Gemma analysis, deterministic fallback,
+and no separate backend stack.
 
 ## Agent Contract
 
@@ -59,9 +80,10 @@ http://localhost:3000
 
 First run opens a clean workspace. To process your real job pipeline, configure
 Gmail OAuth, connect readonly Gmail, then sync recruiting mail. To see the
-sanitized Kaggle story without credentials, open `/judge-demo`.
+sanitized Kaggle story without credentials or local workspace writes, open
+`/judge-demo`.
 
-## Optional: Gemma4 Through Ollama Cloud
+## Optional: Gemma Through Ollama Cloud
 
 CareerOS calls the Ollama Cloud API from the Next.js server. Users do not set
 up a desktop model runtime. Create an Ollama Cloud API key, then create
@@ -70,20 +92,24 @@ up a desktop model runtime. Create an Ollama Cloud API key, then create
 ```bash
 CAREEROS_OLLAMA_ENABLED=true
 CAREEROS_OLLAMA_BASE_URL=https://ollama.com
-CAREEROS_GEMMA_MODEL=gemma4:e4b
+CAREEROS_GEMMA_MODEL=gemma4:31b
 OLLAMA_API_KEY=your-ollama-cloud-api-key
 ```
 
-Restart `pnpm dev`, then open `/settings` and click **Save and check**.
+Restart `pnpm dev`, then open `/settings` and click **Save and verify Ollama Cloud API**.
 
-Ollama's current docs list `https://ollama.com/api` as the cloud API base URL
-and `OLLAMA_API_KEY` as the authentication env var.
+This demo allows only the Ollama Cloud base URL `https://ollama.com`; server
+code derives API calls under `https://ollama.com/api`.
 
 For a real key-backed smoke test without starting the app:
 
 ```bash
-OLLAMA_API_KEY=your-ollama-cloud-api-key pnpm smoke:ollama
+pnpm smoke:ollama
 ```
+
+`pnpm smoke:ollama` reads `.env.local` when present. Without an API key it
+fails closed with a clear diagnostic; with a key it checks the configured Gemma
+model through Ollama Cloud.
 
 Mental model:
 
@@ -112,14 +138,23 @@ CAREEROS_GMAIL_QUERY='newer_than:90d (recruiter OR application OR assessment OR 
 CAREEROS_GMAIL_MAX_RESULTS=10
 ```
 
-Restart `pnpm dev`, open `/settings?section=gmail`, click **Connect Gmail**,
-finish Google OAuth, then click **Sync recruiting mail**.
+Restart `pnpm dev`, open `/settings?section=gmail`, and confirm the **Google
+callback URL** shown in the app exactly matches the Google OAuth **Authorized
+redirect URI**. `localhost`, `127.0.0.1`, port, and path must be identical.
+Then click **Connect Gmail**, finish Google OAuth, and click **Sync recruiting
+mail**.
 
 Token boundary: the Gmail token is stored as an AES-GCM envelope at
 `.careeros-data/gmail-oauth.json`, using `CAREEROS_TOKEN_SECRET`,
 `CAREEROS_SECRET_KEY`, or the configured Gmail client secret as key material.
-That directory is gitignored. Do not commit real `.env.local`, Gmail data,
-screenshots with private email, or local state.
+Sync requests readonly Gmail metadata/snippets and converts those bounded
+snippets into import records; full Gmail bodies are not persisted. Sync uses
+small bounded pagination, suppresses already imported message source labels,
+merges new messages into local threads, and writes compact local audit events.
+That directory is gitignored. The OAuth callback validates local state and only
+returns sanitized settings-page statuses; provider raw errors are not shown. Do
+not commit real `.env.local`, Gmail data, screenshots with private email, or
+local state.
 
 ## Routes
 
@@ -136,6 +171,7 @@ screenshots with private email, or local state.
 | `/settings` | Ollama Cloud/Gemma, Gmail, local data, imports |
 | `/api/pipeline` | Inspectable multi-agent pipeline JSON |
 | `/api/providers` | Implemented/roadmap model provider metadata |
+| Metrics API | Local effort metrics for future reporting surfaces |
 
 ## Local Data
 
@@ -145,8 +181,10 @@ Default state is stored in:
 .careeros-data/state.json
 ```
 
-Reset from the UI with `/settings`, or delete `.careeros-data` while the dev
-server is stopped. The next app read recreates an empty workspace.
+Use `/settings?section=local-data` to export, import, or delete local data.
+Delete requires the exact confirmation phrase. You can also delete
+`.careeros-data` while the dev server is stopped; the next app read recreates
+an empty workspace.
 
 ## Commands
 
@@ -155,6 +193,9 @@ pnpm dev       # run the local Next.js app
 pnpm check     # TypeScript
 pnpm test      # Vitest
 pnpm build     # production build
+pnpm smoke:browser # headless Chrome route/layout smoke
+pnpm smoke:ollama  # optional live Ollama Cloud smoke when .env.local has OLLAMA_API_KEY
+pnpm release:check # public safety + check + test + build + browser + Ollama + diff check
 pnpm run ci    # check + test + build
 ```
 
@@ -169,11 +210,13 @@ Before publishing, verify:
 
 ## Docs
 
+- [Security](SECURITY.md)
 - [Architecture](docs/architecture.md)
 - [API spec](docs/api-spec.md)
+- [Browser smoke and screenshot proof](docs/browser-smoke.md)
 - [Design](docs/design.md)
+- [Product completion plan](docs/product-completion-plan.md)
 - [Hackathon writeup](docs/hackathon-writeup.md)
-- [Provider roadmap](docs/provider-research.md)
 - [Roadmap](docs/roadmap.md)
 - [Release summary](docs/release-summary.md)
 

@@ -1,4 +1,5 @@
 import { hashText, newId, nowIso, stableId } from "./id";
+import { appendAuditEvent, createAuditEvent } from "./audit";
 import { analyzeImportRecordWithModel } from "./model-analysis";
 import { checkOllamaStatus, modelRuntimeOptions, modelStatusTrace, type ModelRuntimeOptions } from "./model-status";
 import { analyzeResumeWithModel } from "./resume-model-analysis";
@@ -167,11 +168,15 @@ function mergeAgentRuns(existing: AgentRun[], nextRuns: AgentRun[]) {
   return [...nextRuns.filter((run) => !existingIds.has(run.id)), ...existing];
 }
 
-export function processLocalImport(state: CareerOSState, records: LocalImportRecord[]): CareerOSState {
+export function processLocalImport(
+  state: CareerOSState,
+  records: LocalImportRecord[],
+  source: ImportJob["source"] = "json"
+): CareerOSState {
   const now = nowIso();
   const importJob: ImportJob = {
     id: newId("job"),
-    source: "json",
+    source,
     status: "processed",
     attempts: 1,
     createdAt: now,
@@ -179,7 +184,18 @@ export function processLocalImport(state: CareerOSState, records: LocalImportRec
   };
 
   let next = {
-    ...state,
+    ...appendAuditEvent(
+      state,
+      createAuditEvent({
+        action: "import.processed",
+        status: "succeeded",
+        summary: `Processed ${records.length} local import record${records.length === 1 ? "" : "s"}.`,
+        actor: "system",
+        sourceType: "import",
+        sourceId: importJob.id,
+        metadata: { records: records.length, source: importJob.source }
+      })
+    ),
     importJobs: [importJob, ...state.importJobs]
   };
 
@@ -301,9 +317,10 @@ export function processLocalImport(state: CareerOSState, records: LocalImportRec
 export async function processLocalImportWithModel(
   state: CareerOSState,
   records: LocalImportRecord[],
-  options: ModelRuntimeOptions = {}
+  options: ModelRuntimeOptions = {},
+  source: ImportJob["source"] = "json"
 ): Promise<CareerOSState> {
-  let next = processLocalImport(state, records);
+  let next = processLocalImport(state, records, source);
   const statusReport = await checkOllamaStatus(options);
   next = {
     ...next,

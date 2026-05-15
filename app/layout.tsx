@@ -115,7 +115,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
 
   return (
     <html lang="en" className={`${geistSans.variable} ${geistMono.variable}`}>
-      <body>
+      <body suppressHydrationWarning>
         <a className="skip-link" href="#main">
           Skip to content
         </a>
@@ -129,6 +129,16 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
               <AppNav />
 
               <div className="workspace-header-spacer" />
+
+              <Link
+                className="workspace-mascot-link"
+                href="/agents"
+                prefetch={false}
+                aria-label="Open CareerOS agent contracts"
+                title="CareerOS agents"
+              >
+                <img src="/mascots/pixel-inbox-buddy.svg" alt="" aria-hidden="true" />
+              </Link>
 
               <div className="header-actions" role="group" aria-label="Workspace actions">
                 <div

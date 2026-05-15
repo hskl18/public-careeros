@@ -11,7 +11,7 @@ function cleanEndpoint(value: FormDataEntryValue | null) {
 
 function cleanModelTag(value: FormDataEntryValue | null) {
   const modelTag = String(value ?? "").trim();
-  return modelTag || "gemma4:e4b";
+  return modelTag || "gemma4:31b";
 }
 
 export async function GET() {

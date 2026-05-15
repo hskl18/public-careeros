@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ActionLink } from "@/components/ui";
 import { checkServerOllamaStatus, readServerState } from "@/lib/server-state";
 
 export const dynamic = "force-dynamic";
@@ -36,7 +37,7 @@ function modelHint(status: string, modelTag: string) {
   if (status === "model_missing") return `${modelTag} is not available to this Ollama account`;
   if (status === "unavailable") return "Check Ollama Cloud key or stay deterministic";
   if (status === "disabled") return "Optional Ollama Cloud is disabled";
-  return "Check model setup";
+  return "Verify Ollama Cloud API setup";
 }
 
 type PrimaryAction = {
@@ -66,8 +67,8 @@ function primaryAction({
   if (workspaceEmpty && connectorStatus !== "connected") {
     return {
       eyebrow: "Gmail sync",
-      title: "Connect Gmail to start your real pipeline",
-      body: "This workspace starts clean. Add Google OAuth env values, connect readonly Gmail, then sync recruiting mail into review-gated application state.",
+      title: "Open the judge demo or connect your inbox",
+      body: "The public judge demo works with sanitized sample evidence and no keys. Real workspaces start from readonly Gmail sync, with optional Gemma checks in Settings.",
       href: "/settings?section=gmail",
       cta: "Connect Gmail",
       tone: "explore"
@@ -166,6 +167,7 @@ export default async function DashboardPage() {
   const recentEvents = state.events.slice(0, 8);
   const activeNotifications = state.notifications.filter((item) => item.status !== "dismissed");
   const connector = state.connectorAccounts.find((item) => item.provider === "gmail");
+  const gmailConnected = connector?.status === "connected";
   const workspaceEmpty = state.applications.length === 0 && state.mailboxThreads.length === 0 && state.reviewItems.length === 0;
   const latestUpdate = recentEvents[0]?.createdAt ?? state.workspaceUser.createdAt;
 
@@ -223,42 +225,21 @@ export default async function DashboardPage() {
         <section className="card app-workspace-panel home-agent-console workspace-fixed-top p-3 sm:p-4">
           <div className="home-agent-header">
             <div className="min-w-0">
-              <p className="eyebrow">Agentic pipeline console</p>
-              <h1 className="mt-1 text-base font-semibold text-[var(--text-primary)] sm:mt-2 sm:text-xl">
+              <h1 className="text-base font-semibold text-[var(--text-primary)] sm:text-xl">
                 Mailbox pipeline console
               </h1>
-              <p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--text-secondary)]">
-                CareerOS is the open-source CareerOC demo: connect readonly Gmail, sync recruiting evidence, and turn
-                mailbox signals into structured application state with agent handoffs, Gemma via Ollama Cloud, deterministic
-                fallback, and review gates before state changes.
+              <p className="mt-1 max-w-3xl text-sm leading-6 text-[var(--text-secondary)]">
+                Recruiting mail becomes review-gated application state through bounded agents, deterministic fallback,
+                and optional Gemma checks.
               </p>
             </div>
-            <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center sm:justify-end">
-              {action.tone === "explore" ? (
-                <>
-                  <Link href={action.href} className="btn btn-primary btn-sm justify-center max-lg:min-h-9">
-                    {action.cta}
-                  </Link>
-                  <Link
-                    href="/judge-demo"
-                    className="inline-flex min-h-9 items-center justify-center gap-2 rounded-md border border-[var(--border)] bg-[var(--surface-tint-3)] px-3 font-mono text-[0.64rem] font-semibold uppercase tracking-[0.08em] text-[var(--text-primary)] transition hover:border-[var(--brand-blue)]/35 hover:bg-[var(--surface-tint-5)]"
-                  >
-                    Judge demo
-                  </Link>
-                </>
-              ) : (
-                <>
-                  <Link href={action.href} className="btn btn-primary btn-sm justify-center max-lg:min-h-9">
-                    {action.cta}
-                  </Link>
-                  <Link
-                    href="/judge-demo"
-                    className="inline-flex min-h-9 items-center justify-center gap-2 rounded-md border border-[var(--border)] bg-[var(--surface-tint-3)] px-3 font-mono text-[0.64rem] font-semibold uppercase tracking-[0.08em] text-[var(--text-primary)] transition hover:border-[var(--brand-blue)]/35 hover:bg-[var(--surface-tint-5)]"
-                  >
-                    Judge demo
-                  </Link>
-                </>
-              )}
+            <div className="home-header-actions">
+              <ActionLink href={action.href} variant="primary" size="sm">
+                {action.cta}
+              </ActionLink>
+              <ActionLink href="/judge-demo" size="sm">
+                Judge demo
+              </ActionLink>
             </div>
           </div>
 
@@ -322,8 +303,7 @@ export default async function DashboardPage() {
               <div className="shrink-0 px-4 pt-4 sm:px-5 sm:pt-5">
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <p className="eyebrow">Activity log</p>
-              <h2 className="mt-1.5 text-base font-semibold text-[var(--text-primary)] sm:text-lg">
+                    <h2 className="text-base font-semibold text-[var(--text-primary)] sm:text-lg">
                       Recent changes
                     </h2>
                   </div>
@@ -342,49 +322,54 @@ export default async function DashboardPage() {
                         No applications loaded yet
                       </h3>
                       <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">
-                        CareerOS now waits for your readonly Gmail sync before creating application records. Connect
-                        Gmail, sync recent recruiting mail, then every extracted update goes through evidence and
-                        review before it changes the pipeline.
+                        The canonical judge demo uses sanitized sample mail and needs no Gmail, API key, or model
+                        download. To run your own workspace, connect readonly Gmail and optionally enable Gemma via
+                        Ollama Cloud; extracted updates still wait at the review gate.
                       </p>
                       <div className="mt-4 grid gap-2 sm:grid-cols-3">
                         <div className="rounded-md border border-[var(--border)] bg-[var(--surface-tint-1)] p-3">
-                          <span className="label">1. Configure</span>
-                          <strong className="mt-1 block text-sm text-[var(--text-primary)]">Google OAuth env</strong>
+                          <span className="label">1. Judge demo</span>
+                          <strong className="mt-1 block text-sm text-[var(--text-primary)]">Inspect sample workflow</strong>
                           <small className="mt-1 block text-xs leading-5 text-[var(--text-tertiary)]">
-                            Add Gmail client id, secret, redirect URI, and readonly scope in `.env.local`.
+                            Mailbox evidence, extraction, trace, review gate, and notification are already wired.
                           </small>
                         </div>
                         <div className="rounded-md border border-[var(--border)] bg-[var(--surface-tint-1)] p-3">
-                          <span className="label">2. Connect</span>
-                          <strong className="mt-1 block text-sm text-[var(--text-primary)]">Authorize Gmail</strong>
+                          <span className="label">2. Gmail</span>
+                          <strong className="mt-1 block text-sm text-[var(--text-primary)]">Connect readonly sync</strong>
                           <small className="mt-1 block text-xs leading-5 text-[var(--text-tertiary)]">
-                            Finish Google OAuth once. The encrypted token stays under `.careeros-data`.
+                            Add OAuth values to `.env.local`, authorize once, then sync bounded recruiting snippets.
                           </small>
                         </div>
                         <div className="rounded-md border border-[var(--border)] bg-[var(--surface-tint-1)] p-3">
-                          <span className="label">3. Process</span>
-                          <strong className="mt-1 block text-sm text-[var(--text-primary)]">Sync and review</strong>
+                          <span className="label">3. Gemma</span>
+                          <strong className="mt-1 block text-sm text-[var(--text-primary)]">Enable only if wanted</strong>
                           <small className="mt-1 block text-xs leading-5 text-[var(--text-tertiary)]">
-                            Mailbox triage, extraction, Gemma when enabled, reminders, and review gates run together.
+                            Ollama Cloud is optional. Deterministic mode remains active when Gemma is disabled.
                           </small>
                         </div>
                       </div>
                       <div className="mt-4 flex flex-wrap gap-2">
+                        <Link href="/judge-demo" className="btn btn-primary btn-sm">
+                          Open judge demo
+                        </Link>
                         <form action="/api/connectors/gmail/connect" method="post">
-                          <button className="btn btn-primary btn-sm" type="submit">
-                            Connect Gmail
+                          <button className="btn btn-secondary btn-sm" type="submit">
+                            {connector?.status === "needs_attention" ? "Reconnect Gmail" : "Connect Gmail"}
                           </button>
                         </form>
-                        <form action="/api/connectors/gmail/sync" method="post">
-                          <button className="button secondary" type="submit">
-                            Sync recruiting mail
-                          </button>
-                        </form>
+                        {gmailConnected ? (
+                          <form action="/api/connectors/gmail/sync" method="post">
+                            <button className="button secondary" type="submit">
+                              Sync recruiting mail
+                            </button>
+                          </form>
+                        ) : null}
                         <Link href="/settings?section=gmail" className="button secondary">
                           Gmail setup
                         </Link>
-                        <Link href="/judge-demo" className="button secondary">
-                          View judge demo
+                        <Link href="/settings" className="button secondary">
+                          Set up Gemma
                         </Link>
                       </div>
                     </article>
@@ -462,8 +447,7 @@ export default async function DashboardPage() {
               <div className="shrink-0 px-5 pt-5">
                 <div className="flex items-center justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="eyebrow">Needs attention</p>
-                    <h2 className="mt-2 text-lg font-semibold text-[var(--text-primary)]">
+                    <h2 className="text-lg font-semibold text-[var(--text-primary)]">
                       Action queue
                     </h2>
                   </div>

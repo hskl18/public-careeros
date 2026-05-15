@@ -3,37 +3,43 @@ const flowStages = [
     index: "01",
     label: "Mailbox",
     title: "Triage",
-    detail: "Recruiting signal"
+    detail: "Recruiting signal",
+    asset: "/agents/agent-inbox-triage.svg"
   },
   {
     index: "02",
     label: "Workflow",
     title: "Extract",
-    detail: "Typed proposal"
+    detail: "Typed proposal",
+    asset: "/agents/agent-workflow-extraction.svg"
   },
   {
     index: "03",
     label: "Evidence",
     title: "Review gate",
-    detail: "Blocks mutation"
+    detail: "Blocks mutation",
+    asset: "/agents/agent-review-evidence.svg"
   },
   {
     index: "04",
     label: "Resume",
     title: "Context",
-    detail: "Candidate facts"
+    detail: "Candidate facts",
+    asset: "/agents/agent-resume-extraction.svg"
   },
   {
     index: "05",
     label: "Notify",
     title: "Reminders",
-    detail: "No stale follow-up"
+    detail: "No stale follow-up",
+    asset: "/agents/agent-follow-up-task.svg"
   },
   {
     index: "06",
     label: "Router",
     title: "Gemma/Ollama",
-    detail: "Local or fallback"
+    detail: "Cloud or fallback",
+    asset: "/agents/agent-career-orchestrator.svg"
   }
 ];
 
@@ -67,6 +73,7 @@ export function AgentFlowAnimation({ modelStatus, modelTag }: AgentFlowAnimation
       <div className="agent-flow-stages">
         {flowStages.map((stage) => (
           <article className="agent-flow-stage" key={stage.index}>
+            <img className="agent-flow-stage__mascot" src={stage.asset} alt="" aria-hidden="true" />
             <span>{stage.index}</span>
             <small>{stage.label}</small>
             <strong>{stage.title}</strong>

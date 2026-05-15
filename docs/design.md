@@ -1,6 +1,6 @@
 # Product Design
 
-Last updated: 2026-05-12
+Last updated: 2026-05-13
 
 For the one-line description and quickstart, see the
 [README](../README.md). For runtime/agent layers, see
@@ -163,14 +163,11 @@ makes the old follow-up stale.
 
 Makes runtime state explicit:
 
-- data reset and persistence location
+- data export/import/delete and persistence location
 - optional connector state
 - Ollama/Gemma status (disabled / unreachable / model-missing / ready)
-- Ollama Cloud setup controls (endpoint, tag, save, check)
+- Ollama Cloud setup controls (endpoint, tag, save, verify API)
 - env-key guidance — never an in-app secret field
-- provider roadmap visibility through the same registry used by the judge demo;
-  implemented paths are deterministic fallback and Gemma via Ollama Cloud, while
-  BYOK/advanced runtime adapters remain labeled as roadmap only
 - one fixed light theme so the public demo stays visually consistent for
   judges and screenshots
 - sub-nav on `/settings` switches *view*, not anchor — `?section=` query
@@ -205,20 +202,20 @@ CRUD app:
 
 ## App shell and scroll model
 
-One integrated app shell across pipeline, applications, analytics, resume,
-review, notifications, settings, and judge demo.
+One integrated app shell across pipeline, applications, agents, resume, review,
+notifications, settings, and judge demo.
 
 ### Fixed-shell routes (desktop ≥768px)
 
 These routes keep the document and shell from page-scrolling; long surfaces
-scroll inside their own sections instead. Enforced by
-`tests/e2e/app-smoke.spec.ts` (`route.fixedShell: true`).
+scroll inside their own sections instead. They are checked through the current
+TypeScript/build gate and should receive browser smoke coverage before any
+major layout rewrite.
 
 | Route | Fixed top region | Section-internal scroll |
 | --- | --- | --- |
 | `/` | hero card (`home-agent-console workspace-fixed-top`) — eyebrow + state-aware CTA + 6-agent strip + metric tiles + status row | activity log + needs-attention columns (each a `workspace-scroll-region`) |
 | `/applications` | first stack row — hero + metric strip | `applications-scroll-region` wrapping stage board + table + thread-evidence; selected rail scrolls independently |
-| `/analytics` | (none — `analytics-workspace` is the scroll region) | the workspace itself scrolls |
 | `/resume` | dossier head | `resume-agent-rail` and `resume-dossier-content` each scroll inside the dossier body |
 
 ### Page-scrolling routes

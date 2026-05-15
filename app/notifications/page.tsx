@@ -75,11 +75,9 @@ export default async function NotificationsPage({
       <div className="workspace-shell fixed-workspace notifications-workspace mx-auto flex w-full max-w-[104rem] flex-col gap-4 px-3 py-4 sm:px-5 sm:py-6">
       <header className="card app-workspace-panel workspace-fixed-top app-page-header p-4 sm:p-5">
         <div>
-          <p className="eyebrow">Notifications</p>
-          <h1 className="mt-2 text-base font-semibold text-[var(--text-primary)] sm:text-xl">Action queue</h1>
-          <p className="mt-3 max-w-3xl text-sm leading-6 text-[var(--text-secondary)]">
-            Review blockers, Gmail connector health, reminders, model status, and application updates appear here with
-            links back to the owning record.
+          <h1 className="text-base font-semibold text-[var(--text-primary)] sm:text-xl">Action queue</h1>
+          <p className="mt-1 max-w-3xl text-sm leading-6 text-[var(--text-secondary)]">
+            Review blockers, Gmail health, reminders, model status, and application updates.
           </p>
         </div>
         <div className="header-stack">
@@ -125,7 +123,6 @@ export default async function NotificationsPage({
       <section className="section">
         <div className="section-title">
           <div>
-            <p className="eyebrow">Queue</p>
             <h2>Notification rows</h2>
             <p className="subtle">
               Showing {visibleNotifications.length} of {filteredNotifications.length}
@@ -182,46 +179,18 @@ export default async function NotificationsPage({
           <div className="empty-state">
             <strong>No active notifications.</strong>
             <p className="subtle">
-              After Gmail sync, CareerOS will derive review blockers, deadlines, connector health, model checks, and
-              resume states here.
+              The judge demo shows sample notifications from sanitized mail. In a real workspace, Gmail sync and optional
+              Gemma checks create review blockers, deadlines, connector health, and resume states here.
             </p>
             <div className="actions mt-3">
-              <Link className="button primary" href="/settings?section=gmail">Connect Gmail</Link>
-              <Link className="button secondary" href="/">Open pipeline console</Link>
+              <Link className="button primary" href="/judge-demo">Open judge demo</Link>
+              <Link className="button secondary" href="/settings?section=gmail">Connect Gmail</Link>
+              <Link className="button secondary" href="/settings">Set up Gemma</Link>
             </div>
           </div>
         )}
       </section>
 
-      <section className="section notification-state-reference">
-        <div className="section-title">
-          <div>
-            <p className="eyebrow">Operating states</p>
-            <h2>Tracked notification states</h2>
-          </div>
-        </div>
-        <div className="state-matrix">
-          <div className="state-cell">
-            <span className="label">Recruiter reply detected</span>
-            <strong>{state.notifications.some((item) => item.title.toLowerCase().includes("reply")) ? "Visible" : "Waiting"}</strong>
-            <small>Reply notifications route into the owning application timeline.</small>
-          </div>
-          <div className="state-cell">
-            <span className="label">Deadline due soon</span>
-            <strong>
-              {state.notifications.some((item) => item.sourceType === "reminder" || item.title.toLowerCase().includes("deadline"))
-                ? "Visible"
-                : "Clear"}
-            </strong>
-            <small>Reminder and deadline rows stay visible until reviewed or dismissed.</small>
-          </div>
-          <div className="state-cell">
-            <span className="label">Connector health</span>
-            <strong>{connector?.status ?? "not_configured"}</strong>
-            <small>Gmail status stays separate from workspace state and never stores OAuth tokens in exports.</small>
-          </div>
-        </div>
-      </section>
       </div>
       </div>
     </main>

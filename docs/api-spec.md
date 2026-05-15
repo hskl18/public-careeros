@@ -1,6 +1,6 @@
 # API Spec
 
-Last updated: 2026-05-12
+Last updated: 2026-05-15
 
 Base URL: `http://localhost:3000` (or `http://127.0.0.1:3000`).
 
@@ -20,14 +20,14 @@ Other Candidate API.
 | GET | [`/api/reminders`](#get-apireminders) | Query open reminders, history, and application timeline |
 | POST | [`/api/reminders/{id}`](#post-apiremindersid) | Mark reminder done/dismissed |
 | GET | [`/api/evidence`](#get-apievidence) | Evidence relationship groups |
-| GET | [`/api/analytics`](#get-apianalytics) | Local effort metrics |
+| GET | Local metrics endpoint | Local effort metrics |
 | POST | [`/api/resume`](#post-apiresume) | Save / analyze resume text |
 | GET | [`/api/model-status`](#get-apimodel-status) | Ollama Cloud/Gemma runtime status |
 | POST | [`/api/model-status`](#post-apimodel-status) | Save Ollama Cloud setup, optionally check |
 | GET | [`/api/connectors`](#get-apiconnectors) | Connector account status |
 | POST | [`/api/connectors/gmail/{action}`](#post-apiconnectorsgmailaction) | Gmail OAuth/sync action |
+| GET | [`/api/connectors/gmail/callback`](#get-apiconnectorsgmailcallback) | Gmail OAuth callback redirect |
 | POST | [`/api/notifications/{id}`](#post-apinotificationsid) | Mark notification read/dismissed |
-| POST | [`/api/reset`](#post-apireset) | Reset to an empty workspace |
 | POST | [`/api/local-data/delete`](#post-apilocal-datadelete) | Delete default local data after confirmation |
 | GET | [`/api/debug/state`](#get-apidebugstate) | Development-only full local state snapshot |
 
@@ -110,8 +110,8 @@ knows about plus its implementation status, trust boundary, and unlock gate.
 - `trust: "byok-credentials"` adapters are blocked until encrypted local
   credential storage exists; `trust: "local-credentials"` roadmap adapters
   are blocked on a stable local-process boundary + schema validation.
-- See [`docs/provider-research.md`](provider-research.md) for the
-  per-adapter integration notes.
+- See [`docs/roadmap.md`](roadmap.md) for the compact provider roadmap and
+  promotion rules.
 
 ## `POST /api/import`
 
@@ -158,6 +158,9 @@ message ids, and source relationships, not raw inbox bodies.
 ### Behavior
 
 - Rejects empty or incomplete records with `400`.
+- Rejects request bodies over 250 KB, more than 20 records, source labels over
+  160 characters, text snippets over 4,000 characters, and unbounded optional
+  enrichment fields.
 - Runs deterministic local import processing.
 - If Ollama/Gemma is enabled and ready, asks the configured model for a bounded
   suggestion.
@@ -320,7 +323,7 @@ application-level evidence views.
   hashes, and bounded snippets.
 - Does not expose raw Gmail bodies, full prompts, or full model responses.
 
-## `GET /api/analytics`
+## Local Metrics Endpoint
 
 Returns local product metrics derived from applications and append-only events.
 
@@ -338,6 +341,9 @@ Returns local product metrics derived from applications and append-only events.
 - Weekly replies count each application's first real response signal, including
   recruiter replies, OA/interview signals, rejection, or offer. Pure
   application-created/application-received events are not counted as replies.
+- Includes a compact local audit summary (`audit.total` and recent audit
+  events) for import/review/reminder/Gmail lifecycle observability. Audit
+  events are bounded metadata, not raw mailbox/model/provider payloads.
 - Bucket names are intended for scanning and analytics; they should not replace
   the canonical application-stage and review-gate logic.
 - Does not require hosted analytics, external databases, or inbox providers.
@@ -355,6 +361,7 @@ Saves or analyzes pasted resume text.
 ### Behavior
 
 - Requires at least 20 characters of resume text.
+- Rejects form bodies over 80 KB and resume text over 6,000 characters.
 - `save` stores a local resume draft without analysis.
 - `analyze` always stores a deterministic resume baseline first.
 - When the saved Ollama Cloud/Gemma runtime is enabled and ready, `analyze`
@@ -401,7 +408,7 @@ Saves Ollama Cloud/Gemma setup and optionally checks model status.
   stays active.
 - `endpoint`: Ollama Cloud base URL, defaults to `https://ollama.com`.
   Non-Ollama Cloud URLs are rejected.
-- `modelTag`: Gemma model tag, defaults to `gemma4:e4b`.
+- `modelTag`: Gemma model tag, defaults to `gemma4:31b`.
 - `intent`: `save` or `check`.
 
 ### Behavior
@@ -422,6 +429,9 @@ Returns optional connector account status.
 - Gmail is disabled by default.
 - Local console, import, resume, review, and notification workflows are
   unaffected when Gmail is disabled or not configured.
+- Also returns `gmailOAuth`, a secret-free setup diagnostic with the exact
+  callback URL to paste into Google OAuth Authorized redirect URIs, current app
+  origin, callback origin, and whether those origins match.
 
 ## `POST /api/connectors/gmail/{action}`
 
@@ -435,13 +445,36 @@ Runs a Gmail connector action for the local readonly demo.
 
 ### Behavior
 
-- `connect` redirects to Google OAuth when local Gmail env values are present.
+- `connect` redirects to Google OAuth when local Gmail env values are present
+  and the local callback origin matches the current app origin.
+- `connect` returns `needs_attention` instead of redirecting to Google when the
+  local callback URL is malformed or points at another local origin/port.
 - `disconnect` removes the local `.careeros-data/gmail-oauth.json` token file.
-- `sync` fetches recent Gmail readonly messages matching the recruiting query,
-  stores bounded snippets, and sends them through the local import/model/review
-  pipeline.
+- `sync` fetches recent Gmail readonly message metadata/snippets matching the
+  recruiting query, stores bounded snippets, and sends them through the local
+  import/model/review pipeline.
+- `sync` paginates within a small local bound, de-duplicates already imported
+  Gmail source labels, merges new messages into existing local threads, and
+  records a local audit event plus a Gmail-sourced import job.
+- `sync` does not request or persist full Gmail message bodies.
 - Returns JSON when the request accepts `application/json`; otherwise redirects
   to `/settings`.
+
+## `GET /api/connectors/gmail/callback`
+
+Handles the local Gmail OAuth redirect for the optional readonly connector.
+
+### Behavior
+
+- Validates the local OAuth `state` value before exchanging the authorization
+  code.
+- Exchanges the code server-side only when Gmail env values are configured.
+- Stores the resulting token as a local AES-GCM envelope at
+  `.careeros-data/gmail-oauth.json`.
+- Redirects to `/settings?section=gmail` with sanitized statuses:
+  `connected`, `oauth_denied`, `oauth_state_invalid`, `missing_code`, or
+  `exchange_failed`.
+- Does not echo provider raw errors, OAuth tokens, or Google response bodies.
 
 ## `POST /api/notifications/{id}`
 
@@ -455,15 +488,6 @@ Marks a notification as read or dismissed.
 
 - Updates local notification status.
 - Redirects to `/notifications`.
-
-## `POST /api/reset`
-
-Resets the local workspace to a clean empty state.
-
-### Behavior
-
-- Replaces local state with an empty workspace.
-- Redirects to `/`.
 
 ## `POST /api/local-data/delete`
 

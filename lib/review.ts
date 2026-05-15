@@ -1,4 +1,5 @@
 import { nowIso } from "./id";
+import { appendAuditEvent, createAuditEvent } from "./audit";
 import type { Application, CareerOSState, ProposedMutation, ReviewItem } from "./types";
 import {
   applyProposedMutation,
@@ -49,7 +50,7 @@ function applyReviewedChange(
   );
   const updatedApplication = applications.find((item) => item.id === application.id) ?? application;
 
-  return {
+  const nextState = {
     ...state,
     applications,
     reminders: refreshRemindersForMutation(state.reminders, updatedApplication, revisedChange),
@@ -69,6 +70,18 @@ function applyReviewedChange(
         : item
     )
   };
+  return appendAuditEvent(
+    nextState,
+    createAuditEvent({
+      action: status === "accepted" ? "review.accepted" : "review.corrected",
+      status: "succeeded",
+      summary: `${status === "accepted" ? "Accepted" : "Corrected"} review ${review.id}.`,
+      actor: "local_user",
+      sourceType: "review",
+      sourceId: review.id,
+      metadata: { applicationId: application.id, confidence }
+    })
+  );
 }
 
 export function acceptReviewItem(state: CareerOSState, reviewId: string): CareerOSState {
@@ -90,7 +103,8 @@ export function dismissReviewItem(state: CareerOSState, reviewId: string): Caree
     "review",
     review.confidence
   );
-  return {
+  return appendAuditEvent(
+    {
     ...state,
     events: event && !state.events.some((item) => item.id === event.id) ? [event, ...state.events] : state.events,
     reviewItems: state.reviewItems.map((item) =>
@@ -98,7 +112,17 @@ export function dismissReviewItem(state: CareerOSState, reviewId: string): Caree
         ? { ...item, status: "dismissed", decidedAt: nowIso(), decisionEventId: event?.id }
         : item
     )
-  };
+    },
+    createAuditEvent({
+      action: "review.dismissed",
+      status: "succeeded",
+      summary: `Dismissed review ${review.id} without mutating application state.`,
+      actor: "local_user",
+      sourceType: "review",
+      sourceId: review.id,
+      metadata: { confidence: review.confidence }
+    })
+  );
 }
 
 export function correctReviewItem(
@@ -132,7 +156,8 @@ export function updateReminderStatus(
     1
   );
 
-  return {
+  return appendAuditEvent(
+    {
     ...state,
     applications: application
       ? state.applications.map((item) => (item.id === application.id ? { ...item, updatedAt: now } : item))
@@ -141,5 +166,15 @@ export function updateReminderStatus(
       item.id === reminderId ? { ...item, status, decidedAt: now } : item
     ),
     events: event && !state.events.some((item) => item.id === event.id) ? [event, ...state.events] : state.events
-  };
+    },
+    createAuditEvent({
+      action: status === "done" ? "reminder.completed" : "reminder.dismissed",
+      status: "succeeded",
+      summary: `${status === "done" ? "Completed" : "Dismissed"} reminder ${reminder.id}.`,
+      actor: "local_user",
+      sourceType: "reminder",
+      sourceId: reminder.id,
+      metadata: { applicationId: reminder.applicationId }
+    })
+  );
 }

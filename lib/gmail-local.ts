@@ -25,6 +25,8 @@ interface GmailTokenEnvelope {
 
 interface GmailListResponse {
   messages?: Array<{ id: string; threadId: string }>;
+  nextPageToken?: string;
+  resultSizeEstimate?: number;
 }
 
 interface GmailMessageResponse {
@@ -33,10 +35,7 @@ interface GmailMessageResponse {
   snippet?: string;
   internalDate?: string;
   payload?: {
-    mimeType?: string;
-    body?: { data?: string };
     headers?: Array<{ name?: string; value?: string }>;
-    parts?: GmailMessageResponse["payload"][];
   };
 }
 
@@ -44,7 +43,30 @@ export interface GmailSyncResult {
   records: LocalImportRecord[];
   threads: MailboxThread[];
   account: ConnectorAccount;
+  stats: {
+    pagesFetched: number;
+    listedMessages: number;
+    fetchedMessages: number;
+    resultSizeEstimate?: number;
+    hasMore: boolean;
+  };
 }
+
+export interface GmailOAuthSetupDiagnostic {
+  enabled: boolean;
+  clientIdConfigured: boolean;
+  clientSecretConfigured: boolean;
+  configured: boolean;
+  redirectUri: string;
+  requestedOrigin: string;
+  redirectOrigin?: string;
+  redirectUriValid: boolean;
+  originMatchesRequest: boolean;
+  status: "disabled" | "not_configured" | "ready" | "needs_attention";
+  nextStep: string;
+}
+
+export const gmailOAuthState = "careeros-local-gmail";
 
 function dataDir() {
   return process.env.CAREEROS_DATA_DIR ?? ".careeros-data";
@@ -131,6 +153,89 @@ export function gmailIsConfigured() {
   return Boolean(gmailEnabled() && gmailClientId() && gmailClientSecret());
 }
 
+export function gmailOAuthSetupDiagnostic(requestUrl: string): GmailOAuthSetupDiagnostic {
+  const enabled = gmailEnabled();
+  const clientIdConfigured = Boolean(gmailClientId());
+  const clientSecretConfigured = Boolean(gmailClientSecret());
+  const configured = Boolean(enabled && clientIdConfigured && clientSecretConfigured);
+  const requestedOrigin = new URL(requestUrl).origin;
+  const redirectUri = gmailRedirectUri(requestUrl);
+  let redirectOrigin: string | undefined;
+  let redirectUriValid = false;
+
+  try {
+    redirectOrigin = new URL(redirectUri).origin;
+    redirectUriValid = true;
+  } catch {
+    redirectOrigin = undefined;
+  }
+
+  const originMatchesRequest = Boolean(redirectOrigin && redirectOrigin === requestedOrigin);
+
+  if (!enabled) {
+    return {
+      enabled,
+      clientIdConfigured,
+      clientSecretConfigured,
+      configured,
+      redirectUri,
+      requestedOrigin,
+      redirectOrigin,
+      redirectUriValid,
+      originMatchesRequest,
+      status: "disabled",
+      nextStep: "Set CAREEROS_GMAIL_CONNECTOR_ENABLED=true only when you want the optional readonly Gmail connector."
+    };
+  }
+
+  if (!clientIdConfigured || !clientSecretConfigured) {
+    return {
+      enabled,
+      clientIdConfigured,
+      clientSecretConfigured,
+      configured,
+      redirectUri,
+      requestedOrigin,
+      redirectOrigin,
+      redirectUriValid,
+      originMatchesRequest,
+      status: "not_configured",
+      nextStep: "Add CAREEROS_GMAIL_CLIENT_ID and CAREEROS_GMAIL_CLIENT_SECRET to .env.local, then restart the dev server."
+    };
+  }
+
+  if (!redirectUriValid || !originMatchesRequest) {
+    return {
+      enabled,
+      clientIdConfigured,
+      clientSecretConfigured,
+      configured,
+      redirectUri,
+      requestedOrigin,
+      redirectOrigin,
+      redirectUriValid,
+      originMatchesRequest,
+      status: "needs_attention",
+      nextStep:
+        "Set CAREEROS_GMAIL_REDIRECT_URI to this app origin and paste that exact callback URL into Google OAuth Authorized redirect URIs."
+    };
+  }
+
+  return {
+    enabled,
+    clientIdConfigured,
+    clientSecretConfigured,
+    configured,
+    redirectUri,
+    requestedOrigin,
+    redirectOrigin,
+    redirectUriValid,
+    originMatchesRequest,
+    status: "ready",
+    nextStep: "Paste this exact callback URL into Google OAuth Authorized redirect URIs, then retry Connect Gmail."
+  };
+}
+
 export function gmailConnectUrl(requestUrl: string) {
   if (!gmailIsConfigured()) return undefined;
   const url = new URL("https://accounts.google.com/o/oauth2/v2/auth");
@@ -140,7 +245,7 @@ export function gmailConnectUrl(requestUrl: string) {
   url.searchParams.set("access_type", "offline");
   url.searchParams.set("prompt", "consent");
   url.searchParams.set("scope", "https://www.googleapis.com/auth/gmail.readonly");
-  url.searchParams.set("state", "careeros-local-gmail");
+  url.searchParams.set("state", gmailOAuthState);
   return url.toString();
 }
 
@@ -246,18 +351,6 @@ function header(message: GmailMessageResponse, name: string) {
   return message.payload?.headers?.find((item) => item.name?.toLowerCase() === name.toLowerCase())?.value ?? "";
 }
 
-function decodeBody(data?: string): string {
-  if (!data) return "";
-  return Buffer.from(data.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8");
-}
-
-function plainText(payload: GmailMessageResponse["payload"]): string {
-  if (!payload) return "";
-  const own = payload.mimeType?.includes("text/plain") ? decodeBody(payload.body?.data) : "";
-  const child = (payload.parts ?? []).map(plainText).join("\n");
-  return `${own}\n${child}`.trim();
-}
-
 function inferCompany(subject: string, from: string) {
   const subjectMatch = subject.match(/\b(?:from|at|with)\s+([A-Z][A-Za-z0-9 .&-]{2,48}?)(?=\s+(?:for|about|regarding)\b|$)/);
   if (subjectMatch) return subjectMatch[1].trim();
@@ -277,9 +370,8 @@ function toImportRecord(message: GmailMessageResponse): LocalImportRecord {
   const subject = header(message, "Subject") || "(no subject)";
   const from = header(message, "From") || "unknown sender";
   const date = header(message, "Date");
-  const body = plainText(message.payload).slice(0, 1800);
-  const snippet = message.snippet ?? "";
-  const text = [`Subject: ${subject}`, `From: ${from}`, date ? `Date: ${date}` : "", snippet, body].filter(Boolean).join("\n").slice(0, 2400);
+  const snippet = (message.snippet ?? "").slice(0, 500);
+  const text = [`Subject: ${subject}`, `From: ${from}`, date ? `Date: ${date}` : "", snippet].filter(Boolean).join("\n").slice(0, 1200);
   return {
     company: inferCompany(subject, from),
     role: inferRole(subject, text),
@@ -295,48 +387,94 @@ function toImportRecord(message: GmailMessageResponse): LocalImportRecord {
 export async function syncGmailRecruitingMail(limit = 10): Promise<GmailSyncResult> {
   const token = await accessToken();
   const query = process.env.CAREEROS_GMAIL_QUERY?.trim() || 'newer_than:90d (recruiter OR application OR assessment OR interview OR "next steps" OR offer OR OA)';
-  const listUrl = new URL("https://gmail.googleapis.com/gmail/v1/users/me/messages");
-  listUrl.searchParams.set("maxResults", String(limit));
-  listUrl.searchParams.set("q", query);
-  const listResponse = await fetch(listUrl, { headers: { authorization: `Bearer ${token}` } });
-  if (!listResponse.ok) throw new Error(`Gmail message search failed with HTTP ${listResponse.status}.`);
-  const list = (await listResponse.json()) as GmailListResponse;
+  const boundedLimit = Math.max(1, Math.min(limit, 50));
+  const listedMessages: Array<{ id: string; threadId: string }> = [];
+  const seenMessageIds = new Set<string>();
+  let pageToken: string | undefined;
+  let pagesFetched = 0;
+  let resultSizeEstimate: number | undefined;
+
+  while (listedMessages.length < boundedLimit && pagesFetched < 5) {
+    const listUrl = new URL("https://gmail.googleapis.com/gmail/v1/users/me/messages");
+    listUrl.searchParams.set("maxResults", String(Math.min(25, boundedLimit - listedMessages.length)));
+    listUrl.searchParams.set("q", query);
+    if (pageToken) listUrl.searchParams.set("pageToken", pageToken);
+    const listResponse = await fetch(listUrl, { headers: { authorization: `Bearer ${token}` } });
+    if (!listResponse.ok) throw new Error(`Gmail message search failed with HTTP ${listResponse.status}.`);
+    const list = (await listResponse.json()) as GmailListResponse;
+    pagesFetched += 1;
+    resultSizeEstimate = list.resultSizeEstimate ?? resultSizeEstimate;
+    for (const message of list.messages ?? []) {
+      if (seenMessageIds.has(message.id)) continue;
+      seenMessageIds.add(message.id);
+      listedMessages.push(message);
+      if (listedMessages.length >= boundedLimit) break;
+    }
+    pageToken = list.nextPageToken;
+    if (!pageToken || !(list.messages ?? []).length) break;
+  }
+
   const messages = await Promise.all(
-    (list.messages ?? []).map(async (item) => {
+    listedMessages.map(async (item) => {
       const url = new URL(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${item.id}`);
-      url.searchParams.set("format", "full");
+      url.searchParams.set("format", "metadata");
+      url.searchParams.append("metadataHeaders", "Subject");
+      url.searchParams.append("metadataHeaders", "From");
+      url.searchParams.append("metadataHeaders", "Date");
       const response = await fetch(url, { headers: { authorization: `Bearer ${token}` } });
       if (!response.ok) throw new Error(`Gmail message fetch failed with HTTP ${response.status}.`);
       return (await response.json()) as GmailMessageResponse;
     })
   );
   const records = messages.map(toImportRecord);
-  const threads = messages.map((message, index): MailboxThread => {
+  const threadsById = new Map<string, MailboxThread>();
+  messages.forEach((message, index) => {
     const subject = header(message, "Subject") || records[index].company;
     const from = header(message, "From") || "unknown sender";
-    return {
-      id: stableId("thread", ["gmail", message.threadId]),
+    const threadId = stableId("thread", ["gmail", message.threadId]);
+    const mailboxMessage = {
+      id: message.id,
+      threadId,
+      fromLabel: from.slice(0, 120),
+      subject,
+      snippet: records[index].text.slice(0, 360),
+      receivedAt: records[index].receivedAt ?? nowIso(),
+      sourceLabel: records[index].sourceLabel
+    };
+    const existing = threadsById.get(threadId);
+    if (existing) {
+      threadsById.set(threadId, {
+        ...existing,
+        messages: existing.messages.some((item) => item.id === mailboxMessage.id)
+          ? existing.messages
+          : [...existing.messages, mailboxMessage]
+      });
+      return;
+    }
+    threadsById.set(threadId, {
+      id: threadId,
       source: "gmail",
       subject,
       companyHint: records[index].company,
       roleHint: records[index].role,
-      messages: [
-        {
-          id: message.id,
-          threadId: stableId("thread", ["gmail", message.threadId]),
-          fromLabel: from.slice(0, 120),
-          subject,
-          snippet: records[index].text.slice(0, 360),
-          receivedAt: records[index].receivedAt ?? nowIso(),
-          sourceLabel: records[index].sourceLabel
-        }
-      ],
+      messages: [mailboxMessage],
       createdAt: records[index].receivedAt ?? nowIso()
-    };
+    });
   });
+  const threads = [...threadsById.values()];
   return {
     records,
     threads,
-    account: tokenAccount("connected", `Synced ${records.length} recent recruiting message${records.length === 1 ? "" : "s"} from Gmail into the local pipeline.`)
+    account: tokenAccount(
+      "connected",
+      `Fetched ${records.length} recent recruiting message${records.length === 1 ? "" : "s"} from Gmail metadata/snippets.`
+    ),
+    stats: {
+      pagesFetched,
+      listedMessages: listedMessages.length,
+      fetchedMessages: messages.length,
+      resultSizeEstimate,
+      hasMore: Boolean(pageToken)
+    }
   };
 }

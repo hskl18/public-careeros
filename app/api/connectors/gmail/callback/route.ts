@@ -1,17 +1,25 @@
 import { NextResponse } from "next/server";
-import { exchangeGmailCode, gmailConnectorAccount } from "@/lib/gmail-local";
+import { exchangeGmailCode, gmailConnectorAccount, gmailOAuthState } from "@/lib/gmail-local";
 import { updateState } from "@/lib/store";
+
+function redirectToGmailSettings(request: Request, status: string) {
+  return NextResponse.redirect(new URL(`/settings?section=gmail&gmail=${status}`, request.url), 303);
+}
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
   const code = url.searchParams.get("code");
   const error = url.searchParams.get("error");
+  const state = url.searchParams.get("state");
 
   if (error) {
-    return NextResponse.redirect(new URL(`/settings?section=gmail&gmail=error`, request.url), 303);
+    return redirectToGmailSettings(request, "oauth_denied");
+  }
+  if (state !== gmailOAuthState) {
+    return redirectToGmailSettings(request, "oauth_state_invalid");
   }
   if (!code) {
-    return NextResponse.json({ error: "Missing Gmail OAuth code." }, { status: 400 });
+    return redirectToGmailSettings(request, "missing_code");
   }
 
   try {
@@ -21,9 +29,8 @@ export async function GET(request: Request) {
       ...state,
       connectorAccounts: [account, ...state.connectorAccounts.filter((item) => item.provider !== "gmail")]
     }));
-    return NextResponse.redirect(new URL("/settings?section=gmail&gmail=connected", request.url), 303);
-  } catch (exchangeError) {
-    const message = exchangeError instanceof Error ? exchangeError.message : "Gmail OAuth failed.";
-    return NextResponse.json({ error: message }, { status: 400 });
+    return redirectToGmailSettings(request, "connected");
+  } catch {
+    return redirectToGmailSettings(request, "exchange_failed");
   }
 }

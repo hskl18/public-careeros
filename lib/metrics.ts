@@ -1,4 +1,4 @@
-import type { Application, ApplicationBucket, ApplicationEvent, CareerOSState } from "./types";
+import type { Application, ApplicationBucket, ApplicationEvent, AuditEvent, CareerOSState } from "./types";
 import { applicationBucketFor } from "./workflow";
 
 export interface AnalyticsMetrics {
@@ -28,6 +28,10 @@ export interface AnalyticsSummary {
   roleBreakdown: AnalyticsBreakdownItem[];
   statusBuckets: Array<{ bucket: ApplicationBucket; count: number }>;
   trends: AnalyticsTrendBucket[];
+  audit: {
+    total: number;
+    recent: AuditEvent[];
+  };
 }
 
 export interface AnalyticsTrendBucket {
@@ -274,6 +278,10 @@ export function deriveAnalyticsSummary(state: CareerOSState): AnalyticsSummary {
     companyBreakdown: buildBreakdown(applications, state.events, (application) => application.company),
     roleBreakdown: buildBreakdown(applications, state.events, (application) => application.role),
     statusBuckets: buildStatusBuckets(applications),
-    trends: buildTrends(state)
+    trends: buildTrends(state),
+    audit: {
+      total: state.auditEvents.length,
+      recent: state.auditEvents.slice(0, 10)
+    }
   };
 }

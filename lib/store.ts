@@ -27,11 +27,12 @@ function normalizeState(state: CareerOSState): CareerOSState {
     mailboxThreads: state.mailboxThreads ?? [],
     candidateContext: state.candidateContext ?? createEmptyCandidateContext(),
     agentRuns: state.agentRuns ?? [],
+    auditEvents: state.auditEvents ?? [],
     modelRuntime: state.modelRuntime ?? {
       provider: "ollama",
       enabled: process.env.CAREEROS_OLLAMA_ENABLED === "true",
       endpoint: process.env.CAREEROS_OLLAMA_BASE_URL ?? "https://ollama.com",
-      modelTag: process.env.CAREEROS_GEMMA_MODEL ?? "gemma4:e4b",
+      modelTag: process.env.CAREEROS_GEMMA_MODEL ?? "gemma4:31b",
       updatedAt: new Date().toISOString()
     },
     evidenceSnippets: (state.evidenceSnippets ?? []).map((snippet) => ({

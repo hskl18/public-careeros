@@ -1,6 +1,6 @@
 # Roadmap
 
-Last updated: 2026-05-12
+Last updated: 2026-05-15
 
 For surface area see [design.md](design.md). This doc is the **phased plan**
 and public follow-up tracker.
@@ -35,7 +35,9 @@ Implemented in the current public repository:
   `/api/providers`; deterministic + Ollama Cloud/Gemma are implemented, all other
   adapters are explicitly roadmap metadata.
 - Gmail readonly OAuth sync that imports bounded recruiting snippets into the
-  local pipeline while keeping tokens under `.careeros-data`.
+  local pipeline while keeping tokens under `.careeros-data`; sync has bounded
+  pagination, duplicate suppression, local thread merge, Gmail import jobs, and
+  compact audit events.
 - Simple `pnpm install && pnpm dev` startup path.
 - CI typecheck/test/build for the local Next.js demo.
 - Safe local JSON export, strict workspace JSON import, and confirmed
@@ -80,11 +82,12 @@ Continuing polish:
 
 ## Phase 3: Safe Inbox Integration Hardening — planned
 
-- Design encrypted local credential storage.
-- Harden Gmail sync with encrypted local credential storage and richer thread
-  pagination.
+- Harden the local Gmail AES-GCM token envelope with rotation, recovery, and
+  clearer failure-state UX.
+- Extend Gmail sync beyond the shipped bounded pagination with reconnect,
+  backfill cursor controls, and user-visible sync windows.
 - Preserve provider-free startup even when Gmail support exists.
-- Add connector-specific health, backfill, and sync lifecycle states.
+- Add deeper connector-specific health and backfill lifecycle states.
 - Add tests around token-file failure states and credential redaction.
 
 ## Phase 4: Model And Evidence Expansion — planned
@@ -120,6 +123,15 @@ Other Candidate or advanced self-hosting:
 
 ## Engineering Follow-Up
 
+- Treat the current release as a 10/10 judge-demo package for the public
+  Kaggle/Gemma scope. Hosted-product parity remains explicitly out of scope for
+  this repo.
+- Keep follow-up work grounded in [product-completion-plan.md](product-completion-plan.md):
+  proof curation, sanitized Gmail recording, broader fake mailbox eval depth,
+  and focused accessibility/mobile polish.
+- Keep workflow work aligned with the LangGraph-style discipline in
+  [architecture.md](architecture.md): explicit nodes, checkpointable local
+  state, review interrupts, and replayable tests.
 - Keep public safety scanning strict around env files, data exports, personal
   emails, provider dashboards, and secrets.
 - Keep `StateRepository` as the persistence boundary for future database swaps.

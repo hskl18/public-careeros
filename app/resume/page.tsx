@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import Link from "next/link";
 import { checkServerOllamaStatus, readServerState } from "@/lib/server-state";
 
 export const dynamic = "force-dynamic";
@@ -32,7 +33,6 @@ export default async function ResumePage() {
           <header className="resume-dossier-head">
             <div>
               <div className="flex flex-wrap items-center gap-2">
-                <p className="eyebrow">Resume dossier</p>
                 <span className="badge info">Dossier</span>
                 <span className="badge">{analysisMode}</span>
                 <span className="badge info">Review-gated output</span>
@@ -90,6 +90,12 @@ export default async function ResumePage() {
                     Deterministic extraction is always available. Gemma via Ollama Cloud is optional and only becomes
                     model-backed when your API key and model tag pass the readiness check.
                   </p>
+                  {!latestDocument ? (
+                    <div className="actions mt-3">
+                      <Link className="button primary" href="/judge-demo">Open judge demo</Link>
+                      <Link className="button secondary" href="/settings">Set up Gemma</Link>
+                    </div>
+                  ) : null}
                 </div>
                 <div className="resume-path-grid">
                   {[
