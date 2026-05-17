@@ -89,9 +89,9 @@ or local `pnpm smoke:ollama` can separately prove the live Ollama Cloud path.
 
 Runtime pinning:
 
-- `package.json` uses `"engines": { "node": "22.x" }` so Vercel stays on
-  Node 22 instead of auto-upgrading to a future major Node release.
-- `.node-version` also pins local and CI tooling to Node 22.
+- `package.json` uses `"engines": { "node": "24.x" }` so Vercel stays on
+  Node 24 instead of auto-upgrading to a future major Node release.
+- `.node-version` also pins local and CI tooling to Node 24.
 
 ## Pipeline Diagram
 

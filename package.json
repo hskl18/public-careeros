@@ -24,7 +24,7 @@
     "url": "https://github.com/hskl18/public-careeros/issues"
   },
   "engines": {
-    "node": "22.x"
+    "node": "24.x"
   },
   "scripts": {
     "dev": "next dev",

@@ -72,12 +72,12 @@ The Vercel Node runtime is pinned with:
 ```json
 {
   "engines": {
-    "node": "22.x"
+    "node": "24.x"
   }
 }
 ```
 
-`.node-version` also pins local and CI tooling to Node 22. This avoids the
+`.node-version` also pins local and CI tooling to Node 24. This avoids the
 Vercel warning caused by open-ended ranges such as `>=22.5.0`, which can roll
 forward to a future major Node release.
 
