@@ -15,6 +15,12 @@ reminders, and notifications.
 Other Candidate is a Gemma 4 powered multi-agent recruiting mailbox pipeline,
 not another chatbot.
 
+Project links:
+
+- [Public judge demo](https://public-careeros.vercel.app/judge-demo)
+- [Hosted product](https://www.careeroc.com)
+- [Source repository](https://github.com/hskl18/public-careeros)
+
 Run it with:
 
 ```bash
