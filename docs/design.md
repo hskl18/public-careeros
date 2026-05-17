@@ -1,7 +1,5 @@
 # Product Design
 
-Last updated: 2026-05-13
-
 For the one-line description and quickstart, see the
 [README](../README.md). For runtime/agent layers, see
 [architecture.md](architecture.md). This doc covers **product positioning,
@@ -42,7 +40,7 @@ similar communities:
 - The inbox already contains the truth, but candidates manually rebuild it in
   spreadsheets.
 - After 50–100 applications, rows lose context: JD link, resume version,
-  source, recruiter, salary/location, and the *reason* for the next follow-up.
+  source, recruiter, salary/location, and the _reason_ for the next follow-up.
 - Recruiter emails arrive without enough context for the candidate to remember
   which role they refer to.
 - Stale follow-up reminders become noise after an OA, recruiter reply,
@@ -91,9 +89,9 @@ the mailbox-to-state loop immediately, not only summary metrics:
 ### Judge demo (`/judge-demo`)
 
 Interactive hackathon surface — not a marketing landing page. It must
-communicate within seconds: *CareerOS is a private-workspace multi-agent mailbox
+communicate within seconds: _CareerOS is a private-workspace multi-agent mailbox
 pipeline; Gemma via Ollama Cloud is the primary model path; review gates protect
-durable state.*
+durable state._
 
 Preferred composition:
 
@@ -170,7 +168,7 @@ Makes runtime state explicit:
 - env-key guidance — never an in-app secret field
 - one fixed light theme so the public demo stays visually consistent for
   judges and screenshots
-- sub-nav on `/settings` switches *view*, not anchor — `?section=` query
+- sub-nav on `/settings` switches _view_, not anchor — `?section=` query
   param swaps which section renders. Defaults to `model`.
 
 ### Agents (`/agents`)
@@ -212,11 +210,11 @@ scroll inside their own sections instead. They are checked through the current
 TypeScript/build gate and should receive browser smoke coverage before any
 major layout rewrite.
 
-| Route | Fixed top region | Section-internal scroll |
-| --- | --- | --- |
-| `/` | hero card (`home-agent-console workspace-fixed-top`) — eyebrow + state-aware CTA + 6-agent strip + metric tiles + status row | activity log + needs-attention columns (each a `workspace-scroll-region`) |
-| `/applications` | first stack row — hero + metric strip | `applications-scroll-region` wrapping stage board + table + thread-evidence; selected rail scrolls independently |
-| `/resume` | dossier head | `resume-agent-rail` and `resume-dossier-content` each scroll inside the dossier body |
+| Route           | Fixed top region                                                                                                             | Section-internal scroll                                                                                          |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `/`             | hero card (`home-agent-console workspace-fixed-top`) — eyebrow + state-aware CTA + 6-agent strip + metric tiles + status row | activity log + needs-attention columns (each a `workspace-scroll-region`)                                        |
+| `/applications` | first stack row — hero + metric strip                                                                                        | `applications-scroll-region` wrapping stage board + table + thread-evidence; selected rail scrolls independently |
+| `/resume`       | dossier head                                                                                                                 | `resume-agent-rail` and `resume-dossier-content` each scroll inside the dossier body                             |
 
 ### Page-scrolling routes
 
@@ -256,7 +254,7 @@ with `workspace-fixed-top`.
 - calendar synchronization
 - outbound automation
 - hosted account management
-- production Gmail OAuth and token storage
+- hosted production Gmail OAuth/token infrastructure
 - advanced analytics and reporting
 
 These are later layers, not requirements for the current private-workspace

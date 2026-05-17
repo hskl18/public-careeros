@@ -2,6 +2,12 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import "../styles/layout.css";
+import "../styles/home.css";
+import "../styles/components.css";
+import "../styles/pages.css";
+import "../styles/polish.css";
+import "../styles/responsive.css";
 import { AppNav } from "@/components/app-nav";
 import { BrandLogo } from "@/components/brand-logo";
 import { IconBell, IconReview, IconSettings, IconSpark } from "@/components/icons";
@@ -130,17 +136,17 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
 
               <div className="workspace-header-spacer" />
 
-              <Link
-                className="workspace-mascot-link"
-                href="/agents"
-                prefetch={false}
-                aria-label="Open CareerOS agent contracts"
-                title="CareerOS agents"
-              >
-                <img src="/mascots/pixel-inbox-buddy.svg" alt="" aria-hidden="true" />
-              </Link>
-
               <div className="header-actions" role="group" aria-label="Workspace actions">
+                <Link
+                  className="workspace-mascot-link"
+                  href="/agents"
+                  prefetch={false}
+                  aria-label="Open CareerOS agent contracts"
+                  title="CareerOS agents"
+                >
+                  <img src="/mascots/inbox-buddy.svg" alt="" aria-hidden="true" />
+                </Link>
+
                 <div
                   className={`header-status-cluster header-tone-${modelState.tone}`}
                   aria-label={`Workspace pipeline · ${modelState.long}${reviewCount > 0 ? ` · ${reviewCount} review open` : ""}`}

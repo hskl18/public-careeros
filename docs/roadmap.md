@@ -1,6 +1,6 @@
 # Roadmap
 
-Last updated: 2026-05-15
+Last updated: 2026-05-17
 
 For surface area see [design.md](design.md). This doc is the **phased plan**
 and public follow-up tracker.
@@ -126,9 +126,9 @@ Other Candidate or advanced self-hosting:
 - Treat the current release as a 10/10 judge-demo package for the public
   Kaggle/Gemma scope. Hosted-product parity remains explicitly out of scope for
   this repo.
-- Keep follow-up work grounded in [product-completion-plan.md](product-completion-plan.md):
-  proof curation, sanitized Gmail recording, broader fake mailbox eval depth,
-  and focused accessibility/mobile polish.
+- Keep follow-up work grounded in [release-summary.md](release-summary.md) and
+  [eval.md](eval.md): proof curation, sanitized Gmail recording, broader fake
+  mailbox eval depth, and focused accessibility/mobile polish.
 - Keep workflow work aligned with the LangGraph-style discipline in
   [architecture.md](architecture.md): explicit nodes, checkpointable local
   state, review interrupts, and replayable tests.

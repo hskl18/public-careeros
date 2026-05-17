@@ -21,11 +21,16 @@ export function setStateRepository(nextRepository: StateRepository) {
 }
 
 function normalizeState(state: CareerOSState): CareerOSState {
+  const emptyContext = createEmptyCandidateContext();
   return {
     ...state,
     schemaVersion: state.schemaVersion ?? currentWorkspaceSchemaVersion,
     mailboxThreads: state.mailboxThreads ?? [],
-    candidateContext: state.candidateContext ?? createEmptyCandidateContext(),
+    candidateContext: {
+      ...emptyContext,
+      ...(state.candidateContext ?? {}),
+      feedbackFacts: state.candidateContext?.feedbackFacts ?? []
+    },
     agentRuns: state.agentRuns ?? [],
     auditEvents: state.auditEvents ?? [],
     modelRuntime: state.modelRuntime ?? {

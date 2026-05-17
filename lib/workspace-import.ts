@@ -671,13 +671,18 @@ function validateMailboxThread(value: unknown, path: string) {
 }
 
 function validateCandidateContext(value: unknown, path: string) {
-  const record = validateObject(value, ["id", "targetRoles", "skills", "preferences", "resumeKeywords", "updatedAt"], path);
+  const record = validateObject(
+    value,
+    ["id", "targetRoles", "skills", "preferences", "resumeKeywords", "feedbackFacts", "updatedAt"],
+    path
+  );
   return {
     id: requiredString(record, "id", path),
     targetRoles: requiredStringArray(record, "targetRoles", path),
     skills: requiredStringArray(record, "skills", path),
     preferences: requiredStringArray(record, "preferences", path),
     resumeKeywords: requiredStringArray(record, "resumeKeywords", path),
+    feedbackFacts: optionalStringArray(record, "feedbackFacts", path, 200, 240) ?? [],
     updatedAt: requiredString(record, "updatedAt", path)
   };
 }

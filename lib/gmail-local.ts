@@ -3,6 +3,7 @@ import path from "path";
 import { Buffer } from "buffer";
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "crypto";
 import { hashText, nowIso, stableId } from "./id";
+import { defaultRuntimeDataDir } from "./persistence";
 import type { ConnectorAccount, LocalImportRecord, MailboxThread } from "./types";
 
 interface GmailTokenFile {
@@ -69,7 +70,7 @@ export interface GmailOAuthSetupDiagnostic {
 export const gmailOAuthState = "careeros-local-gmail";
 
 function dataDir() {
-  return process.env.CAREEROS_DATA_DIR ?? ".careeros-data";
+  return defaultRuntimeDataDir();
 }
 
 function tokenPath() {

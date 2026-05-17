@@ -1,5 +1,6 @@
 import { hashText, newId, nowIso, stableId } from "./id";
 import { appendAuditEvent, createAuditEvent } from "./audit";
+import { feedbackHintsForRecord } from "./feedback-memory";
 import { analyzeImportRecordWithModel } from "./model-analysis";
 import { checkOllamaStatus, modelRuntimeOptions, modelStatusTrace, type ModelRuntimeOptions } from "./model-status";
 import { analyzeResumeWithModel } from "./resume-model-analysis";
@@ -26,11 +27,11 @@ import {
 
 function toStage(text: string): ProposedMutation["stage"] | undefined {
   const normalized = text.toLowerCase();
-  if (normalized.includes("offer")) return "offer";
-  if (normalized.includes("reject") || normalized.includes("not moving forward")) return "rejected";
-  if (normalized.includes("assessment") || normalized.includes("take-home")) return "assessment";
-  if (normalized.includes("interview")) return "interview";
-  if (normalized.includes("reply") || normalized.includes("recruiter")) return "recruiter_reply";
+  if (/\boffer\b|offer details|congratulations/.test(normalized)) return "offer";
+  if (/reject|rejection|not moving forward|not selected|decline to move forward/.test(normalized)) return "rejected";
+  if (/\boa\b|online assessment|assessment|take-home|take home|coding challenge/.test(normalized)) return "assessment";
+  if (/interview|phone screen|technical screen|onsite|on-site|final round/.test(normalized)) return "interview";
+  if (/reply|recruiter|next steps|availability|schedule/.test(normalized)) return "recruiter_reply";
   if (normalized.includes("applied") || normalized.includes("submitted")) return "applied";
   return undefined;
 }
@@ -38,18 +39,71 @@ function toStage(text: string): ProposedMutation["stage"] | undefined {
 function confidenceFor(text: string) {
   const normalized = text.toLowerCase();
   let confidence = 0.45;
-  if (/interview|assessment|offer|reject|deadline|follow[- ]?up|recruiter/.test(normalized)) confidence += 0.22;
+  if (/interview|phone screen|technical screen|\boa\b|assessment|offer|reject|deadline|follow[- ]?up|recruiter|next steps/.test(normalized)) confidence += 0.22;
   if (/application|applied|submitted|receipt/.test(normalized)) confidence += 0.18;
-  if (/\b\d{4}-\d{2}-\d{2}\b/.test(normalized)) confidence += 0.12;
+  if (/job description|jd link|source:|resume|cover letter|linkedin|handshake|career fair/.test(normalized)) confidence += 0.12;
+  if (/\b\d{4}-\d{2}-\d{2}\b|\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s+\d{1,2}(?:,\s*\d{4})?\b/.test(normalized)) confidence += 0.12;
   if (/\b(?:maybe|possibly|unclear|either|or)\b/.test(normalized)) confidence -= 0.2;
   return Math.max(0.1, Math.min(0.98, Number(confidence.toFixed(2))));
 }
 
+const monthIndex: Record<string, number> = {
+  jan: 0,
+  january: 0,
+  feb: 1,
+  february: 1,
+  mar: 2,
+  march: 2,
+  apr: 3,
+  april: 3,
+  may: 4,
+  jun: 5,
+  june: 5,
+  jul: 6,
+  july: 6,
+  aug: 7,
+  august: 7,
+  sep: 8,
+  sept: 8,
+  september: 8,
+  oct: 9,
+  october: 9,
+  nov: 10,
+  november: 10,
+  dec: 11,
+  december: 11
+};
+
 function extractIsoDate(text: string) {
   const match = text.match(/\b\d{4}-\d{2}-\d{2}\b/);
-  if (!match) return undefined;
-  const date = new Date(`${match[0]}T16:00:00.000Z`);
+  if (match) {
+    const date = new Date(`${match[0]}T16:00:00.000Z`);
+    return Number.isFinite(date.getTime()) ? date.toISOString() : undefined;
+  }
+  const natural = text.match(
+    /\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sept?|september|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?\s+(\d{1,2})(?:,\s*(\d{4}))?\b/i
+  );
+  if (!natural) return undefined;
+  const month = monthIndex[natural[1].toLowerCase().replace(/\.$/, "")];
+  const day = Number(natural[2]);
+  const year = natural[3] ? Number(natural[3]) : 2026;
+  const date = new Date(Date.UTC(year, month, day, 16, 0, 0, 0));
   return Number.isFinite(date.getTime()) ? date.toISOString() : undefined;
+}
+
+function isNonRecruitingNoise(text: string) {
+  const normalized = text.toLowerCase();
+  if (/not related to (?:a )?job application|not about (?:a )?(?:job|application|recruiting)/.test(normalized)) {
+    return true;
+  }
+  const recruitingSignal =
+    /\b(application|applied|applicant|candidate|recruiter|interview|phone screen|technical screen|online assessment|\boa\b|offer|rejection|not moving forward|job|role|resume|cover letter|hiring|next steps)\b/.test(
+      normalized
+    );
+  if (recruitingSignal) return false;
+  return /\b(newsletter|unsubscribe|password reset|security code|shipping|delivery|invoice|receipt|sale|discount|webinar|social notification|liked your post)\b/.test(
+    normalized
+  );
 }
 
 function firstMatch(text: string, pattern: RegExp) {
@@ -89,8 +143,13 @@ function extractMetadata(record: LocalImportRecord) {
   };
 }
 
-function isRiskyMutation(change: ProposedMutation) {
-  return Boolean(change.deadlineAt || change.stage === "offer" || change.stage === "rejected");
+function isRiskyMutation(change: ProposedMutation, createdApplication: boolean) {
+  return Boolean(
+    change.deadlineAt ||
+      change.stage === "offer" ||
+      change.stage === "rejected" ||
+      ((change.stage === "assessment" || change.stage === "interview") && (createdApplication || !change.applicationId))
+  );
 }
 
 function createEvidence(record: LocalImportRecord, applicationId?: string, reviewItemId?: string): EvidenceSnippet {
@@ -200,7 +259,25 @@ export function processLocalImport(
   };
 
   for (const record of records) {
-    const confidence = confidenceFor(record.text);
+    if (isNonRecruitingNoise(record.text)) {
+      next = {
+        ...next,
+        agentRuns: mergeAgentRuns(next.agentRuns, [
+          {
+            id: stableId("agent_run", [record.sourceLabel, "mailbox_triage", "ignored"]),
+            agent: "mailbox_triage",
+            status: "deterministic",
+            inputRef: record.sourceLabel,
+            confidence: 0.92,
+            reason: "Ignored non-recruiting mailbox noise before extraction.",
+            createdAt: now
+          }
+        ])
+      };
+      continue;
+    }
+    const feedbackHints = feedbackHintsForRecord(next.candidateContext, record);
+    const confidence = Math.min(0.98, Number((confidenceFor(record.text) + (feedbackHints.length ? 0.06 : 0)).toFixed(2)));
     const stage = toStage(record.text);
     const eventType = resolveEventType(stage);
     const date = extractIsoDate(record.text);
@@ -239,7 +316,7 @@ export function processLocalImport(
       company: record.company,
       role: record.role,
       matchReviewReason: match.reviewReason,
-      risky: isRiskyMutation(proposedChange)
+      risky: isRiskyMutation(proposedChange, match.created)
     });
     const needsReview = reviewDecision.requiresReview;
     if (needsReview && match.created) {
@@ -249,6 +326,13 @@ export function processLocalImport(
     const evidence = createEvidence(record, proposedChange.applicationId, needsReview ? reviewId : undefined);
     const applications = needsReview && match.created ? next.applications : match.applications;
     const agentRuns = buildDeterministicAgentRuns({ record, confidence, eventType, needsReview, reviewId });
+    const agentRunsWithFeedback = feedbackHints.length
+      ? agentRuns.map((run) =>
+          run.agent === "workflow_extraction"
+            ? { ...run, reason: `${run.reason} Used ${feedbackHints.length} local correction memory hint(s).` }
+            : run
+        )
+      : agentRuns;
 
     if (needsReview) {
       const alreadyQueued = next.reviewItems.some((item) => item.id === reviewId);
@@ -267,7 +351,7 @@ export function processLocalImport(
       next = {
         ...next,
         applications,
-        agentRuns: mergeAgentRuns(next.agentRuns, agentRuns),
+        agentRuns: mergeAgentRuns(next.agentRuns, agentRunsWithFeedback),
         evidenceSnippets: [evidence, ...next.evidenceSnippets.filter((item) => item.id !== evidence.id)],
         reviewItems: alreadyQueued ? next.reviewItems : [review, ...next.reviewItems],
         modelTraces: [
@@ -304,7 +388,7 @@ export function processLocalImport(
     next = {
       ...next,
       applications: applications.map((item) => (item.id === updated.id ? updated : item)),
-      agentRuns: mergeAgentRuns(next.agentRuns, agentRuns),
+      agentRuns: mergeAgentRuns(next.agentRuns, agentRunsWithFeedback),
       events: next.events.some((item) => item.id === event.id) ? next.events : [event, ...next.events],
       evidenceSnippets: [evidence, ...next.evidenceSnippets.filter((item) => item.id !== evidence.id)],
       reminders: refreshRemindersForMutation(next.reminders, updated, proposedChange)
@@ -332,7 +416,8 @@ export async function processLocalImportWithModel(
   }
 
   for (const record of records) {
-    const analysis = await analyzeImportRecordWithModel(record, statusReport, options);
+    const feedbackHints = feedbackHintsForRecord(next.candidateContext, record);
+    const analysis = await analyzeImportRecordWithModel(record, statusReport, options, feedbackHints);
     const match = matchOrCreateApplication(next, record, analysis.suggestion?.stage, canCreateApplication(record.company));
     const application = match.application;
     const reviewId = stableId("review", [

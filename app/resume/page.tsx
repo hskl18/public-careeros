@@ -82,6 +82,34 @@ export default async function ResumePage() {
             </aside>
 
             <section className="resume-dossier-content">
+              <ResumeSection number="01" status={latestDocument ? "Saved" : "Empty"} title="Paste resume text">
+                <form className="form" action="/api/resume" method="post">
+                  <label>
+                    <span className="label">Title</span>
+                    <input
+                      name="title"
+                      defaultValue={latestDocument?.title ?? ""}
+                      placeholder="resume-product-v3.pdf"
+                      required
+                    />
+                  </label>
+                  <label>
+                    <span className="label">Resume text</span>
+                    <textarea
+                      name="text"
+                      placeholder="Experience: ... Projects: ... Skills: ..."
+                      required
+                      rows={8}
+                      defaultValue={latestDocument?.text ?? ""}
+                    />
+                  </label>
+                  <div className="actions">
+                    <button className="button primary" name="intent" type="submit" value="analyze">Analyze resume</button>
+                    <button className="button secondary" name="intent" type="submit" value="save">Save draft only</button>
+                  </div>
+                </form>
+              </ResumeSection>
+
               <section className="resume-first-run-path" aria-label="Resume analysis path">
                 <div>
                   <p className="eyebrow">Candidate context path</p>
@@ -138,34 +166,6 @@ export default async function ResumePage() {
                   <small>Invalid or uncertain model output is kept for review instead of being treated as a silent failure.</small>
                 </div>
               </section>
-
-              <ResumeSection number="01" status={latestDocument ? "Saved" : "Empty"} title="Paste resume text">
-                <form className="form" action="/api/resume" method="post">
-                  <label>
-                    <span className="label">Title</span>
-                    <input
-                      name="title"
-                      defaultValue={latestDocument?.title ?? ""}
-                      placeholder="resume-product-v3.pdf"
-                      required
-                    />
-                  </label>
-                  <label>
-                    <span className="label">Resume text</span>
-                    <textarea
-                      name="text"
-                      placeholder="Experience: ... Projects: ... Skills: ..."
-                      required
-                      rows={8}
-                      defaultValue={latestDocument?.text ?? ""}
-                    />
-                  </label>
-                  <div className="actions">
-                    <button className="button primary" name="intent" type="submit" value="analyze">Analyze resume</button>
-                    <button className="button secondary" name="intent" type="submit" value="save">Save draft only</button>
-                  </div>
-                </form>
-              </ResumeSection>
 
               <ResumeSection number="02" status={latestEvaluation ? "Parsed" : "Waiting"} title="Summary">
                 <div className="resume-field">

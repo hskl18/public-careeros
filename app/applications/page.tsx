@@ -457,7 +457,7 @@ export default async function ApplicationsPage() {
             </>
           ) : (
             <div className="selected-rail-empty">
-              <img src="/mascots/pixel-inbox-buddy.svg" alt="" aria-hidden="true" />
+              <img src="/mascots/inbox-buddy.svg" alt="" aria-hidden="true" />
               <strong>No record selected</strong>
               <p>Open the judge demo for a complete sample record, or connect Gmail to create your first local record.</p>
               <div>

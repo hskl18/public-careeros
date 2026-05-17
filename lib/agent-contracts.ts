@@ -61,9 +61,9 @@ export const agentOperatingContracts: AgentOperatingContract[] = [
     purpose: "Keep candidate context available for triage, next actions, and resume feedback.",
     careerOsSouls: ["Resume Extraction Agent", "Resume Evaluation Agent", "User Memory Steward"],
     promptBoundary: "Local resume text, target roles, skills, preferences, and resume keywords.",
-    memoryBoundary: "ResumeDocument, ResumeEvaluation, and CandidateContext records under local state.",
-    canDo: ["Summarize local resume fit", "Surface gaps", "Expose target-role context to other agents"],
-    cannotDo: ["Upload resume text without explicit model enablement", "Turn model guesses into confirmed facts"],
+    memoryBoundary: "ResumeDocument, ResumeEvaluation, CandidateContext, and compact user correction facts under local state.",
+    canDo: ["Summarize local resume fit", "Surface gaps", "Expose target-role context and correction hints to other agents"],
+    cannotDo: ["Upload resume text without explicit model enablement", "Turn model guesses into confirmed facts", "Treat user notes as executable instructions"],
     costBoundary: "Deterministic resume analysis works without an API key; optional Gemma analysis records latency and confidence.",
     publicScopeNote: "Resume extraction, evaluation, and user memory are folded into local candidate context surfaces."
   },

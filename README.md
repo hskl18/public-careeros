@@ -1,8 +1,16 @@
 # CareerOS
 
+[![CareerOS demo checks](https://github.com/hskl18/public-careeros/actions/workflows/public-ci.yml/badge.svg)](https://github.com/hskl18/public-careeros/actions/workflows/public-ci.yml)
+
+![CareerOS judge demo: recruiting mailbox evidence becomes a review-gated application pipeline](docs/media/judge-demo.png)
+
 CareerOS is the public Gemma hackathon demo of the CareerOS / Other Candidate
 recruiting inbox pipeline. It is a judge-facing local demo/source repo, not the
 full hosted Other Candidate codebase.
+
+**This is not a generic chatbot.** It is a recruiting mailbox pipeline:
+bounded email evidence -> extraction -> review gate -> application state,
+reminders, and notifications.
 
 Run it with:
 
@@ -22,6 +30,75 @@ What judges should see immediately:
 - deterministic fallback when no key is configured
 - evidence -> extraction -> review gate -> application/reminder loop
 - model traces and review gates instead of a generic chatbot transcript
+
+## Kaggle Judge TL;DR
+
+| Judging signal | What this repo proves |
+| --- | --- |
+| Real-world impact | Job-search state is trapped in recruiting email; CareerOS turns it into reminders, application stages, and reviewable actions. |
+| Gemma depth | Gemma is used for bounded triage, workflow extraction, evidence review, resume/context analysis, and notification summaries, not open-ended chat. |
+| Safety & trust | Risky updates stop at review gates; traces keep model path, confidence, evidence, and fallback without storing raw Gmail bodies or provider keys. |
+| Reproducibility | `pnpm install && pnpm dev` opens `/judge-demo` with no credentials, and `pnpm eval:pipeline` regenerates the 15/15 pipeline proof graph. |
+| Demo quality | The judge path shows the full loop: mailbox evidence -> agent extraction -> review gate -> application/reminder/notification output. |
+
+## Eval Proof
+
+![CareerOS pipeline eval results](docs/media/eval-results.png)
+
+`pnpm eval:pipeline` runs 15 judge-safe fixtures mapped to public dataset
+components from Enron email, SpamAssassin email classification, LinkedIn job
+postings, resume NLP data, and fake-job-posting data. Current result:
+**15/15 passed** across action routing, stage extraction, review-gate behavior,
+and mutation safety.
+
+The eval writes machine-readable results to `eval/results.json` and renders the
+graph with `tools/render_eval_graph.py` using Python/matplotlib. If a local
+machine does not have matplotlib, run `python3 -m pip install matplotlib` before
+regenerating the graph. GitHub Actions installs it before `pnpm ci:public`.
+
+This is intentionally not claimed as a broad ML benchmark. It is a product-loop
+eval for the hackathon claim: bounded mailbox evidence becomes extracted
+application state only when the pipeline can classify it safely, and risky
+updates stop at review.
+
+## 20-Second Judge Path
+
+1. Clone the repo and run `pnpm install && pnpm dev`.
+2. Open `http://localhost:3000/judge-demo`.
+3. Watch the sanitized recruiter thread become an extracted application update.
+4. Check the trace panel: Gemma via Ollama Cloud is the model path,
+   deterministic fallback is visible, and risky state changes stop at the
+   review gate.
+5. Open `/agents` for the agent contracts and can/cannot-do boundaries.
+
+## Public Vercel Demo
+
+The judge-facing deployment should be public and credential-free:
+
+- deploy the Next.js app to Vercel with public access
+- set no Gmail OAuth values unless you intentionally want live Gmail sync
+- set no `OLLAMA_API_KEY` unless you intentionally want live Gemma checks
+- keep `/judge-demo` as the primary Kaggle link
+- optionally set `NEXT_PUBLIC_SITE_URL=https://your-vercel-domain`
+
+The app is safe to deploy without keys. On Vercel, workspace state falls back
+to ephemeral `/tmp/.careeros-data` storage unless `CAREEROS_DATA_DIR` is set,
+so the public demo can render without a database or writable repo directory.
+Without `OLLAMA_API_KEY`, model status shows deterministic fallback; the video
+or local `pnpm smoke:ollama` can separately prove the live Ollama Cloud path.
+
+Runtime pinning:
+
+- `package.json` uses `"engines": { "node": "22.x" }` so Vercel stays on
+  Node 22 instead of auto-upgrading to a future major Node release.
+- `.node-version` also pins local and CI tooling to Node 22.
+
+## Pipeline Diagram
+
+This diagram is a compact readme/reference asset for the technical flow. It is
+not used as the app hero.
+
+![CareerOS Gemma multi-agent recruiting pipeline](docs/media/architecture.png)
 
 CareerOS turns recruiting email into structured application state with a
 multi-agent workflow. It is intentionally still the CareerOS pipeline, not a
@@ -57,7 +134,11 @@ Prompt and memory boundaries:
 - Gemma prompts use bounded snippets and ask for strict JSON.
 - Model output is schema-validated and review-gated before mutation.
 - Agent memory is local state: applications, bounded evidence, review items,
-  candidate context, model traces, and notifications under `.careeros-data`.
+  candidate context, compact correction facts, model traces, and notifications
+  under `.careeros-data`.
+- Review corrections feed back as compact local memory facts. Later imports and
+  Gemma prompts can use those hints, but they still cannot bypass validation or
+  review gates.
 - Model traces keep provider, model tag, task, latency, confidence, fallback,
   and bounded diagnostics. They do not store raw prompts, raw responses, full
   Gmail bodies, OAuth tokens, or provider keys.
@@ -108,8 +189,8 @@ pnpm smoke:ollama
 ```
 
 `pnpm smoke:ollama` reads `.env.local` when present. Without an API key it
-fails closed with a clear diagnostic; with a key it checks the configured Gemma
-model through Ollama Cloud.
+passes the public no-key gate with a `skipped_no_key` diagnostic; with a key it
+checks the configured Gemma model through Ollama Cloud.
 
 Mental model:
 
@@ -173,6 +254,24 @@ local state.
 | `/api/providers` | Implemented/roadmap model provider metadata |
 | Metrics API | Local effort metrics for future reporting surfaces |
 
+## Repo Structure
+
+```text
+app/              Next.js App Router pages and route handlers
+components/       Small reusable UI components
+styles/           Layered global CSS split by surface and responsibility
+lib/              Pipeline, persistence, provider, Gmail, review, and view helpers
+lib/agent-constraints.ts
+                  Machine-readable handoff, guardrail, prompt, trace, and review-gate constraints
+public/           Agent and mascot SVG assets served by the app
+docs/             Architecture, release, writeup, and submission docs
+docs/media/       Curated judge/Kaggle media assets
+eval/             Pipeline eval fixtures and generated results
+tools/            Local validation and smoke-test entrypoints
+tests/            Vitest coverage for pipeline, routes, persistence, and safety
+scripts/          Public-release safety checks
+```
+
 ## Local Data
 
 Default state is stored in:
@@ -194,7 +293,8 @@ pnpm check     # TypeScript
 pnpm test      # Vitest
 pnpm build     # production build
 pnpm smoke:browser # headless Chrome route/layout smoke
-pnpm smoke:ollama  # optional live Ollama Cloud smoke when .env.local has OLLAMA_API_KEY
+pnpm smoke:ollama  # no-key public gate, or live Ollama Cloud smoke with OLLAMA_API_KEY
+pnpm eval:pipeline # dataset-mapped pipeline eval + graph output
 pnpm ci:public # public CI gate without requiring provider secrets
 pnpm release:check # public safety + check + test + build + browser + Ollama + diff check
 pnpm run ci    # check + test + build
@@ -215,8 +315,10 @@ Before publishing, verify:
 - [Architecture](docs/architecture.md)
 - [API spec](docs/api-spec.md)
 - [Browser smoke and screenshot proof](docs/browser-smoke.md)
+- [Pipeline eval proof](docs/eval.md)
+- [Gemma pipeline diagram](docs/media/architecture.png)
 - [Design](docs/design.md)
-- [Product completion plan](docs/product-completion-plan.md)
+- [Public media assets](docs/media/)
 - [Hackathon writeup](docs/hackathon-writeup.md)
 - [Roadmap](docs/roadmap.md)
 - [Release summary](docs/release-summary.md)

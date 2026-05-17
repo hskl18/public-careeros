@@ -11,6 +11,7 @@
 .careeros-data/
 .dev/
 .tmp/
+tmp/
 coverage/
 playwright-report/
 test-results/
@@ -44,3 +45,5 @@ TestResults/
 *.backup
 *.csv
 *.tsv
+.vercel
+.env*.local

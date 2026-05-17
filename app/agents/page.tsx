@@ -1,5 +1,6 @@
 import { AgentFlowAnimation } from "@/components/agent-flow-animation";
 import { ActionLink } from "@/components/ui";
+import { agentRuntimeConstraints, agentSdkAlignmentNotes, getAgentRuntimeConstraint } from "@/lib/agent-constraints";
 import { agentOperatingContracts, careerOsFullAgentAlignment } from "@/lib/agent-contracts";
 import { pipelineAgentDefinitions } from "@/lib/agent-pipeline";
 import { checkServerOllamaStatus, readServerState } from "@/lib/server-state";
@@ -40,7 +41,8 @@ export default async function AgentsPage() {
     ["Review items", `${openReviews.length} open / ${state.reviewItems.length} total`],
     ["Agent runs", `${state.agentRuns.length} compact traces`],
     ["Model traces", `${state.modelTraces.length} bounded traces`],
-    ["Candidate context", `${state.candidateContext.targetRoles.length} roles · ${state.candidateContext.skills.length} skills`]
+    ["Candidate context", `${state.candidateContext.targetRoles.length} roles · ${state.candidateContext.skills.length} skills`],
+    ["Correction memory", `${state.candidateContext.feedbackFacts.length} local facts`]
   ];
 
   return (
@@ -81,7 +83,7 @@ export default async function AgentsPage() {
             </div>
             <aside className="agents-runtime-stack" aria-label="Runtime and review summary">
               <article className="runtime-card runtime-card--featured">
-                <img className="runtime-card__mascot" src="/mascots/pixel-inbox-buddy-secure.svg" alt="" aria-hidden="true" />
+                <img className="runtime-card__mascot" src="/mascots/inbox-buddy-secure.svg" alt="" aria-hidden="true" />
                 <p className="eyebrow">Model path</p>
                 <strong>{modelStatus.status}</strong>
                 <span>{modelStatus.modelTag} · {modelStatus.diagnostic}</span>
@@ -125,7 +127,7 @@ export default async function AgentsPage() {
             </div>
           </section>
 
-          <section className="section">
+          <section className="section agents-contract-section">
             <div className="section-title">
               <div>
                 <p className="eyebrow">Agent prompting and boundaries</p>
@@ -191,11 +193,65 @@ export default async function AgentsPage() {
                         </ul>
                       </div>
                     </div>
+                    {getAgentRuntimeConstraint(contract.id) ? (
+                      <div className="agent-source-map" aria-label={`${contract.label} runtime guardrails`}>
+                        {getAgentRuntimeConstraint(contract.id)?.guardrails.map((guardrail) => (
+                          <span key={guardrail}>{guardrail.replaceAll("_", " ")}</span>
+                        ))}
+                      </div>
+                    ) : null}
                     <p className="subtle">{contract.publicScopeNote}</p>
                     <p className="subtle">{run?.reason ?? definition?.purpose}</p>
                   </article>
                 );
               })}
+            </div>
+          </section>
+
+          <section className="section">
+            <div className="section-title">
+              <div>
+                <p className="eyebrow">Agent SDK-inspired constraints</p>
+                <h2>Handoff, guardrail, and trace rules</h2>
+                <p className="subtle">
+                  This public demo does not depend on OpenAI Agents SDK at runtime, but its visible contracts mirror the
+                  same production concepts: bounded handoffs, guardrails, schema-checked output, and compact traces.
+                </p>
+              </div>
+            </div>
+            <div className="agent-family-grid">
+              {agentSdkAlignmentNotes.map((note) => (
+                <article className="agent-family-card" key={note}>
+                  <h3>{note}</h3>
+                </article>
+              ))}
+            </div>
+            <div className="agent-contract-grid">
+              {agentRuntimeConstraints.map((constraint) => (
+                <article className="agent-contract-card" key={constraint.agent}>
+                  <div className="agent-contract-card__head">
+                    <span>{constraint.inputLimit}</span>
+                    <div>
+                      <h3>{constraint.agent.replaceAll("_", " ")}</h3>
+                      <p>{constraint.tracePolicy}</p>
+                    </div>
+                  </div>
+                  <dl className="agent-boundary-list">
+                    <div>
+                      <dt>Handoff receives</dt>
+                      <dd>{constraint.handoffReceives.join(" · ")}</dd>
+                    </div>
+                    <div>
+                      <dt>Handoff emits</dt>
+                      <dd>{constraint.handoffEmits.join(" · ")}</dd>
+                    </div>
+                    <div>
+                      <dt>Review required for</dt>
+                      <dd>{constraint.reviewRequiredFor.join(" · ")}</dd>
+                    </div>
+                  </dl>
+                </article>
+              ))}
             </div>
           </section>
 

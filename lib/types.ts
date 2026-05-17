@@ -259,6 +259,7 @@ export interface CandidateContext {
   skills: string[];
   preferences: string[];
   resumeKeywords: string[];
+  feedbackFacts: string[];
   updatedAt: string;
 }
 

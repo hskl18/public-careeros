@@ -1,160 +1,18 @@
 import Link from "next/link";
 import { ActionLink } from "@/components/ui";
+import {
+  actionToneClass,
+  activityTone,
+  formatTimestamp,
+  homeAgentStages,
+  modelHint,
+  primaryDashboardAction,
+  reminderTone,
+  stageLabel
+} from "@/lib/dashboard-view";
 import { checkServerOllamaStatus, readServerState } from "@/lib/server-state";
 
 export const dynamic = "force-dynamic";
-
-function formatTimestamp(value: string | null | undefined) {
-  if (!value) return "Waiting for first sync";
-  return new Intl.DateTimeFormat("en-US", {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit"
-  }).format(new Date(value));
-}
-
-function stageLabel(stage: string) {
-  return stage.replace("_", " ");
-}
-
-function activityTone(type: string) {
-  if (type.includes("rejected")) return "bg-[var(--red-soft)] text-[var(--red)]";
-  if (type.includes("interview")) return "bg-[var(--accent-soft)] text-[var(--accent-ink)]";
-  if (type.includes("review")) return "bg-[var(--yellow-soft)] text-[var(--yellow)]";
-  if (type.includes("created")) return "bg-[var(--blue-soft)] text-[var(--blue)]";
-  return "bg-[var(--green-soft)] text-[var(--green)]";
-}
-
-function reminderTone(kind: string) {
-  if (kind === "critical") return "bg-[var(--red-soft)] text-[var(--red)]";
-  if (kind === "warning") return "bg-[var(--yellow-soft)] text-[var(--yellow)]";
-  return "bg-[var(--blue-soft)] text-[var(--brand-blue-ink)]";
-}
-
-function modelHint(status: string, modelTag: string) {
-  if (status === "ready") return `Gemma ready · ${modelTag}`;
-  if (status === "model_missing") return `${modelTag} is not available to this Ollama account`;
-  if (status === "unavailable") return "Check Ollama Cloud key or stay deterministic";
-  if (status === "disabled") return "Optional Ollama Cloud is disabled";
-  return "Verify Ollama Cloud API setup";
-}
-
-type PrimaryAction = {
-  eyebrow: string;
-  title: string;
-  body: string;
-  href: string;
-  cta: string;
-  tone: "review" | "reminder" | "interview" | "explore";
-};
-
-function primaryAction({
-  openReviews,
-  dueSoon,
-  interviews,
-  offers,
-  workspaceEmpty,
-  connectorStatus
-}: {
-  openReviews: number;
-  dueSoon: number;
-  interviews: number;
-  offers: number;
-  workspaceEmpty: boolean;
-  connectorStatus?: string;
-}): PrimaryAction {
-  if (workspaceEmpty && connectorStatus !== "connected") {
-    return {
-      eyebrow: "Gmail sync",
-      title: "Open the judge demo or connect your inbox",
-      body: "The public judge demo works with sanitized sample evidence and no keys. Real workspaces start from readonly Gmail sync, with optional Gemma checks in Settings.",
-      href: "/settings?section=gmail",
-      cta: "Connect Gmail",
-      tone: "explore"
-    };
-  }
-  if (workspaceEmpty) {
-    return {
-      eyebrow: "Gmail sync",
-      title: "Sync recruiting mail to build the pipeline",
-      body: "Gmail is connected. Sync recent recruiting messages, then CareerOS will triage, extract, review, and track the job workflow.",
-      href: "/settings?section=gmail",
-      cta: "Sync Gmail",
-      tone: "explore"
-    };
-  }
-  if (openReviews > 0) {
-    return {
-      eyebrow: "Review queue",
-      title: `${openReviews} update${openReviews === 1 ? "" : "s"} need your decision`,
-      body: "Uncertain or model-backed updates wait here until you accept, correct, or dismiss them.",
-      href: "/review",
-      cta: "Open review queue",
-      tone: "review"
-    };
-  }
-  if (dueSoon > 0) {
-    return {
-      eyebrow: "Reminders",
-      title: `${dueSoon} reminder${dueSoon === 1 ? "" : "s"} due`,
-      body: "Recruiter follow-ups and deadlines that need a decision.",
-      href: "/notifications",
-      cta: "Open notifications",
-      tone: "reminder"
-    };
-  }
-  if (offers > 0) {
-    return {
-      eyebrow: "Offers",
-      title: `${offers} offer${offers === 1 ? "" : "s"} on the table`,
-      body: "Compare evidence, deadlines, and recruiter notes before you decide.",
-      href: "/applications",
-      cta: "Open applications",
-      tone: "interview"
-    };
-  }
-  if (interviews > 0) {
-    return {
-      eyebrow: "Interviews",
-      title: `${interviews} interview${interviews === 1 ? "" : "s"} in flight`,
-      body: "Keep prep notes, JD links, and recruiter context near each application.",
-      href: "/applications",
-      cta: "Open applications",
-      tone: "interview"
-    };
-  }
-  return {
-    eyebrow: "Judge demo",
-    title: "Inspect the sample mailbox workflow",
-    body: "Use the judge demo for the sanitized Kaggle story. Your workspace data stays separate.",
-    href: "/judge-demo",
-    cta: "Open judge demo",
-    tone: "explore"
-  };
-}
-
-function actionToneClass(tone: PrimaryAction["tone"]) {
-  switch (tone) {
-    case "review":
-      return "bg-[var(--yellow-soft)] text-[var(--yellow)]";
-    case "reminder":
-      return "bg-[var(--accent-soft)] text-[var(--accent-ink)]";
-    case "interview":
-      return "bg-[var(--blue-soft)] text-[var(--blue)]";
-    default:
-      return "bg-[var(--green-soft)] text-[var(--green)]";
-  }
-}
-
-const homeAgentStages = [
-  "Mailbox triage agent",
-  "Workflow extraction agent",
-  "Evidence/review agent",
-  "Resume/context agent",
-  "Reminder/notification agent",
-  "Model router/provider layer"
-];
 
 export default async function DashboardPage() {
   const [state, modelStatus] = await Promise.all([readServerState(), checkServerOllamaStatus()]);
@@ -171,7 +29,7 @@ export default async function DashboardPage() {
   const workspaceEmpty = state.applications.length === 0 && state.mailboxThreads.length === 0 && state.reviewItems.length === 0;
   const latestUpdate = recentEvents[0]?.createdAt ?? state.workspaceUser.createdAt;
 
-  const action = primaryAction({
+  const action = primaryDashboardAction({
     openReviews: openReviews.length,
     dueSoon: dueSoon.length,
     interviews: interviews.length,
@@ -241,6 +99,17 @@ export default async function DashboardPage() {
                 Judge demo
               </ActionLink>
             </div>
+          </div>
+
+          <div className="home-primary-action mt-3">
+            <div>
+              <span className={`badge ${actionToneClass(action.tone)}`}>{action.eyebrow}</span>
+              <strong>{action.title}</strong>
+              <p>{action.body}</p>
+            </div>
+            <ActionLink href={action.href} variant="primary" size="sm">
+              {action.cta}
+            </ActionLink>
           </div>
 
           {/* Agent strip stays visible at all times so the page reads as an agentic pipeline,
@@ -360,15 +229,15 @@ export default async function DashboardPage() {
                         </form>
                         {gmailConnected ? (
                           <form action="/api/connectors/gmail/sync" method="post">
-                            <button className="button secondary" type="submit">
+                            <button className="btn btn-secondary btn-sm" type="submit">
                               Sync recruiting mail
                             </button>
                           </form>
                         ) : null}
-                        <Link href="/settings?section=gmail" className="button secondary">
+                        <Link href="/settings?section=gmail" className="btn btn-secondary btn-sm">
                           Gmail setup
                         </Link>
-                        <Link href="/settings" className="button secondary">
+                        <Link href="/settings" className="btn btn-secondary btn-sm">
                           Set up Gemma
                         </Link>
                       </div>

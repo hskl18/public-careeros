@@ -1,35 +1,33 @@
 # API Spec
 
-Last updated: 2026-05-15
-
 Base URL: `http://localhost:3000` (or `http://127.0.0.1:3000`).
 
 The public CareerOS API is implemented with Next.js route handlers — a
 private-workspace API surface for the provider-free product, not the hosted
 Other Candidate API.
 
-| Method | Path | Purpose |
-| --- | --- | --- |
-| GET | [`/api/pipeline`](#get-apipipeline) | Judge-facing multi-agent pipeline snapshot |
-| GET | [`/api/providers`](#get-apiproviders) | Provider-adapter registry (implementation status + trust + unlock gate) |
-| GET | [`/api/local-data/export`](#get-apilocal-dataexport) | Export normalized local state JSON |
-| POST | [`/api/local-data/import`](#post-apilocal-dataimport) | Strictly import a normalized CareerOS workspace export |
-| POST | [`/api/import`](#post-apiimport) | Import recruiting records |
-| GET | [`/api/review`](#get-apireview) | Query review queue filters and sorting |
-| POST | [`/api/review/{id}`](#post-apireviewid) | Apply a review decision |
-| GET | [`/api/reminders`](#get-apireminders) | Query open reminders, history, and application timeline |
-| POST | [`/api/reminders/{id}`](#post-apiremindersid) | Mark reminder done/dismissed |
-| GET | [`/api/evidence`](#get-apievidence) | Evidence relationship groups |
-| GET | Local metrics endpoint | Local effort metrics |
-| POST | [`/api/resume`](#post-apiresume) | Save / analyze resume text |
-| GET | [`/api/model-status`](#get-apimodel-status) | Ollama Cloud/Gemma runtime status |
-| POST | [`/api/model-status`](#post-apimodel-status) | Save Ollama Cloud setup, optionally check |
-| GET | [`/api/connectors`](#get-apiconnectors) | Connector account status |
-| POST | [`/api/connectors/gmail/{action}`](#post-apiconnectorsgmailaction) | Gmail OAuth/sync action |
-| GET | [`/api/connectors/gmail/callback`](#get-apiconnectorsgmailcallback) | Gmail OAuth callback redirect |
-| POST | [`/api/notifications/{id}`](#post-apinotificationsid) | Mark notification read/dismissed |
-| POST | [`/api/local-data/delete`](#post-apilocal-datadelete) | Delete default local data after confirmation |
-| GET | [`/api/debug/state`](#get-apidebugstate) | Development-only full local state snapshot |
+| Method | Path                                                                | Purpose                                                                 |
+| ------ | ------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| GET    | [`/api/pipeline`](#get-apipipeline)                                 | Judge-facing multi-agent pipeline snapshot                              |
+| GET    | [`/api/providers`](#get-apiproviders)                               | Provider-adapter registry (implementation status + trust + unlock gate) |
+| GET    | [`/api/local-data/export`](#get-apilocal-dataexport)                | Export normalized local state JSON                                      |
+| POST   | [`/api/local-data/import`](#post-apilocal-dataimport)               | Strictly import a normalized CareerOS workspace export                  |
+| POST   | [`/api/import`](#post-apiimport)                                    | Import recruiting records                                               |
+| GET    | [`/api/review`](#get-apireview)                                     | Query review queue filters and sorting                                  |
+| POST   | [`/api/review/{id}`](#post-apireviewid)                             | Apply a review decision                                                 |
+| GET    | [`/api/reminders`](#get-apireminders)                               | Query open reminders, history, and application timeline                 |
+| POST   | [`/api/reminders/{id}`](#post-apiremindersid)                       | Mark reminder done/dismissed                                            |
+| GET    | [`/api/evidence`](#get-apievidence)                                 | Evidence relationship groups                                            |
+| GET    | Local metrics endpoint                                              | Local effort metrics                                                    |
+| POST   | [`/api/resume`](#post-apiresume)                                    | Save / analyze resume text                                              |
+| GET    | [`/api/model-status`](#get-apimodel-status)                         | Ollama Cloud/Gemma runtime status                                       |
+| POST   | [`/api/model-status`](#post-apimodel-status)                        | Save Ollama Cloud setup, optionally check                               |
+| GET    | [`/api/connectors`](#get-apiconnectors)                             | Connector account status                                                |
+| POST   | [`/api/connectors/gmail/{action}`](#post-apiconnectorsgmailaction)  | Gmail OAuth/sync action                                                 |
+| GET    | [`/api/connectors/gmail/callback`](#get-apiconnectorsgmailcallback) | Gmail OAuth callback redirect                                           |
+| POST   | [`/api/notifications/{id}`](#post-apinotificationsid)               | Mark notification read/dismissed                                        |
+| POST   | [`/api/local-data/delete`](#post-apilocal-datadelete)               | Delete default local data after confirmation                            |
+| GET    | [`/api/debug/state`](#get-apidebugstate)                            | Development-only full local state snapshot                              |
 
 ## `GET /api/debug/state`
 
@@ -43,7 +41,9 @@ available by default.
   `CAREEROS_DEBUG_STATE_ENABLED=true`.
 - Reads from the configured state repository.
 - Creates an empty workspace on first access when no local state exists.
-- Uses JSON file persistence by default at `.careeros-data/state.json`.
+- Uses JSON file persistence by default. Local development stores
+  `.careeros-data/state.json`; Vercel stores ephemeral
+  `/tmp/.careeros-data/state.json` unless `CAREEROS_DATA_DIR` is configured.
 - Sends `cache-control: no-store` when enabled.
 
 ## `GET /api/pipeline`
@@ -58,6 +58,8 @@ Returns the judge-facing multi-agent mailbox pipeline snapshot.
   resume/context, reminder/notification, and model-router layers.
 - Includes extracted proposal, bounded evidence snippets, source message ids,
   review gate state, notification output, and model/provider status.
+- Includes `constraints` from `lib/agent-constraints.ts`: SDK-inspired handoff,
+  guardrail, prompt, trace, and review-gate boundaries for each public agent.
 - The judge-facing proposal should demonstrate the fields that make the product
   more useful than a spreadsheet: source, JD link, resume version, recruiter
   contact, deadline, next action, confidence, and evidence.
@@ -185,7 +187,7 @@ Exports the current normalized local CareerOS state as JSON.
 
 - Reads through the same state repository as the app.
 - Returns `application/json` with `Content-Disposition:
-  attachment; filename="careeros-local-state.json"`.
+attachment; filename="careeros-local-state.json"`.
 - Does not include raw Gmail bodies, OAuth tokens, full prompts, or provider
   credentials. Gmail OAuth tokens live in `.careeros-data/gmail-oauth.json`,
   outside the exported workspace state.

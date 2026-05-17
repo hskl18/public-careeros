@@ -8,6 +8,13 @@ import {
   startGmailConnectPlaceholder,
   syncGmailPlaceholder
 } from "@/lib/connectors";
+import {
+  agentRuntimeConstraints,
+  boundedAgentText,
+  modelPromptConstraints,
+  strictJsonPromptPrefix,
+  validateConstraintCoverage
+} from "@/lib/agent-constraints";
 import { agentOperatingContracts, getAgentOperatingContract } from "@/lib/agent-contracts";
 import { deriveAgentPipelineSnapshot, runMailboxTriageAgent, runWorkflowExtractionAgent } from "@/lib/agent-pipeline";
 import { deriveAnalyticsSummary } from "@/lib/metrics";
@@ -30,7 +37,7 @@ import {
   listProviderAdapters,
   listRoadmapAdapters
 } from "@/lib/providers";
-import { JsonFileStateRepository, MemoryStateRepository } from "@/lib/persistence";
+import { defaultRuntimeDataDir, JsonFileStateRepository, MemoryStateRepository } from "@/lib/persistence";
 import { evaluateResumeTextWithModel, processLocalImport, processLocalImportWithModel } from "@/lib/pipeline";
 import { deriveApplicationTimeline, queryReminderHistory } from "@/lib/reminder-queries";
 import { acceptReviewItem, correctReviewItem, dismissReviewItem, updateReminderStatus } from "@/lib/review";
@@ -131,7 +138,7 @@ describe("local deterministic pipeline", () => {
         company: "Unknown Company",
         role: "Candidate pipeline update",
         text: "Maybe this is for either the platform role or the product role. The sender says next steps but gives no company proof.",
-        reviewStage: undefined
+        reviewStage: "recruiter_reply"
       }
     ];
 
@@ -481,6 +488,36 @@ describe("review decisions", () => {
     expect(application?.stage).toBe("interview");
     expect(next.reminders.some((item) => item.applicationId === application?.id && item.type === "interview_preparation")).toBe(true);
     expect(next.reviewItems.find((item) => item.id === review?.id)?.status).toBe("corrected");
+    expect(next.candidateContext.feedbackFacts.some((fact) => fact.includes("Clearview Labs"))).toBe(true);
+    expect(next.candidateContext.feedbackFacts.some((fact) => fact.includes("Backend Engineer"))).toBe(true);
+  });
+
+  it("uses compact correction memory as a hint on later local imports", () => {
+    const base = createSeedState();
+    const state = {
+      ...base,
+      candidateContext: {
+        ...base.candidateContext,
+        feedbackFacts: [
+          "Correction memory: test:memory-later company should be Aurora Systems, not Unknown Company."
+        ]
+      }
+    };
+
+    const next = processLocalImport(state, [
+      {
+        company: "Aurora Systems",
+        role: "Platform Engineer",
+        sourceLabel: "test:memory-later",
+        text: "Application submitted. Source: LinkedIn. Resume: platform-v2.pdf."
+      }
+    ]);
+
+    expect(
+      next.agentRuns.some(
+        (run) => run.agent === "workflow_extraction" && run.reason.includes("local correction memory")
+      )
+    ).toBe(true);
   });
 
   it("updates reminder lifecycle idempotently and writes an event", () => {
@@ -508,7 +545,7 @@ describe("review decisions", () => {
         enabled: true,
         apiKey: "test-key",
         modelTag: "gemma4:31b",
-        fetchFn: async (input) => {
+        fetchFn: async (input, init) => {
           if (String(input).endsWith("/api/tags")) return Response.json({ models: [{ name: "gemma4:31b" }] });
           generateCalls += 1;
           if (generateCalls === 1) return Response.json({ response: "{\"ok\":true}" });
@@ -1019,8 +1056,16 @@ describe("model status", () => {
 
 describe("model-backed import analysis", () => {
   it("queues valid model suggestions for review without mutating application state", async () => {
-    const state = createSeedState();
+    const seed = createSeedState();
+    const state = {
+      ...seed,
+      candidateContext: {
+        ...seed.candidateContext,
+        feedbackFacts: ["Correction memory: test:model-offer offer signals for Atlas Robotics require manual review."]
+      }
+    };
     let generateCalls = 0;
+    const prompts: string[] = [];
     const next = await processLocalImportWithModel(
       state,
       [
@@ -1035,12 +1080,13 @@ describe("model-backed import analysis", () => {
         enabled: true,
         apiKey: "test-key",
         modelTag: "gemma4:31b",
-        fetchFn: async (input) => {
+        fetchFn: async (input, init) => {
           if (String(input).endsWith("/api/tags")) {
             return Response.json({ models: [{ name: "gemma4:31b" }] });
           }
           if (String(input).endsWith("/api/generate")) {
             generateCalls += 1;
+            prompts.push(String(JSON.parse(String((init?.body as string) ?? "{}")).prompt ?? ""));
             if (generateCalls === 1) {
               return Response.json({ response: "{\"ok\":true}" });
             }
@@ -1058,6 +1104,8 @@ describe("model-backed import analysis", () => {
     expect(application?.stage).toBe("interview");
     expect(next.reviewItems.some((item) => item.sourceLabel === "model:test:model-offer" && item.status === "open")).toBe(true);
     expect(next.agentRuns.some((run) => run.agent === "model_router" && run.status === "model_ready")).toBe(true);
+    expect(prompts.some((prompt) => prompt.includes("Local correction memory"))).toBe(true);
+    expect(prompts.some((prompt) => prompt.includes("manual review"))).toBe(true);
   });
 
   it("turns invalid model output into a review item instead of crashing or mutating", async () => {
@@ -1380,6 +1428,23 @@ describe("judge pipeline API snapshot", () => {
 });
 
 describe("persistence abstraction", () => {
+  it("uses ephemeral tmp storage on Vercel when no local data dir is configured", () => {
+    const previousDir = process.env.CAREEROS_DATA_DIR;
+    const previousVercel = process.env.VERCEL;
+
+    try {
+      restoreEnv("CAREEROS_DATA_DIR", undefined);
+      process.env.VERCEL = "1";
+      expect(defaultRuntimeDataDir()).toBe(path.join(tmpdir(), ".careeros-data"));
+
+      process.env.CAREEROS_DATA_DIR = "/custom/careeros-data";
+      expect(defaultRuntimeDataDir()).toBe("/custom/careeros-data");
+    } finally {
+      restoreEnv("CAREEROS_DATA_DIR", previousDir);
+      restoreEnv("VERCEL", previousVercel);
+    }
+  });
+
   it("clears legacy seed-only workspace state without touching real records", async () => {
     const dir = await mkdtemp(path.join(tmpdir(), "careeros-legacy-seed-"));
     const repository = new JsonFileStateRepository(dir);
@@ -2284,5 +2349,25 @@ describe("agent operating contracts", () => {
     expect(getAgentOperatingContract("model_router")?.costBoundary).toMatch(/zero model\/API cost/i);
     expect(getAgentOperatingContract("evidence_review")?.cannotDo.join(" ")).toMatch(/Hide uncertainty/i);
     expect(getAgentOperatingContract("workflow_extraction")?.cannotDo.join(" ")).toMatch(/Apply model output directly/i);
+  });
+
+  it("keeps runtime constraints aligned with every public pipeline agent", () => {
+    expect(validateConstraintCoverage()).toBe(true);
+    for (const constraint of agentRuntimeConstraints) {
+      expect(constraint.inputLimit).toBeGreaterThan(400);
+      expect(constraint.outputLimit).toBeGreaterThan(300);
+      expect(constraint.handoffReceives.length).toBeGreaterThan(1);
+      expect(constraint.handoffEmits.length).toBeGreaterThan(1);
+      expect(constraint.tracePolicy).toMatch(/compact|bounded|never|reject|no keys|stays local|read models/i);
+    }
+  });
+
+  it("centralizes model prompt constraints for Gemma calls", () => {
+    const long = "  one   two three  ".repeat(100);
+    expect(boundedAgentText(long, 12)).toBe("one two thre");
+    expect(modelPromptConstraints.workflowSnippetLimit).toBeLessThan(500);
+    expect(modelPromptConstraints.resumeTextLimit).toBeLessThanOrEqual(900);
+    expect(strictJsonPromptPrefix("workflow extraction agent", "{confidence}")).toContain("Return JSON only");
+    expect(strictJsonPromptPrefix("workflow extraction agent", "{confidence}")).toContain("review-gated");
   });
 });

@@ -16,6 +16,23 @@ function loadLocalEnv() {
 
 async function main() {
   loadLocalEnv();
+  if (!process.env.OLLAMA_API_KEY) {
+    console.log(
+      JSON.stringify(
+        {
+          status: "skipped_no_key",
+          endpoint: process.env.CAREEROS_OLLAMA_BASE_URL ?? "https://ollama.com",
+          modelTag: process.env.CAREEROS_GEMMA_MODEL ?? "gemma4:31b",
+          diagnostic:
+            "OLLAMA_API_KEY is not configured. This is a pass for the public no-key gate; add OLLAMA_API_KEY to .env.local to run the live Ollama Cloud smoke."
+        },
+        null,
+        2
+      )
+    );
+    return;
+  }
+
   const report = await checkOllamaStatus({
     enabled: true,
     endpoint: process.env.CAREEROS_OLLAMA_BASE_URL ?? "https://ollama.com",

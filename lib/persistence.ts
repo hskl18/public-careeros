@@ -1,5 +1,6 @@
 import { randomUUID } from "crypto";
 import { mkdir, readFile, rename, rm, writeFile } from "fs/promises";
+import { tmpdir } from "os";
 import path from "path";
 import type { CareerOSState } from "./types";
 
@@ -28,7 +29,7 @@ export class JsonFileStateRepository implements StateRepository {
   readonly location: string;
   readonly dataDir: string;
 
-  constructor(dataDir = process.env.CAREEROS_DATA_DIR ?? path.join(process.cwd(), ".careeros-data")) {
+  constructor(dataDir = defaultRuntimeDataDir()) {
     this.dataDir = dataDir;
     this.location = path.join(dataDir, "state.json");
   }
@@ -73,12 +74,18 @@ export class MemoryStateRepository implements StateRepository {
   }
 }
 
+export function defaultRuntimeDataDir() {
+  if (process.env.CAREEROS_DATA_DIR) return process.env.CAREEROS_DATA_DIR;
+  if (process.env.VERCEL === "1") return path.join(tmpdir(), ".careeros-data");
+  return path.join(process.cwd(), ".careeros-data");
+}
+
 export function createDefaultStateRepository(): StateRepository {
   return new JsonFileStateRepository();
 }
 
 export function defaultLocalDataDir() {
-  return path.join(process.cwd(), ".careeros-data");
+  return defaultRuntimeDataDir();
 }
 
 export function isDefaultLocalDataDir(dataDir: string | undefined) {

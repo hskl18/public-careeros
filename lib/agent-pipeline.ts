@@ -10,6 +10,7 @@ import type {
   ReviewItem
 } from "./types";
 import type { ModelStatusReport } from "./model-status";
+import { agentRuntimeConstraints, agentSdkAlignmentNotes } from "./agent-constraints";
 import { deriveNotifications } from "./notifications";
 import { listByokRoadmapAdapters, listLocalRoadmapAdapters } from "./providers";
 import { createSeedCandidateContext, createSeedMailboxThreads } from "./seed";
@@ -46,6 +47,10 @@ export interface AgentPipelineSnapshot {
   reviewGate: {
     openCount: number;
     items: ReviewItem[];
+  };
+  constraints: {
+    sdkConcepts: string[];
+    runtime: typeof agentRuntimeConstraints;
   };
   notifications: Notification[];
   modelRouter: {
@@ -225,6 +230,7 @@ export function runResumeContextAgent(state: CareerOSState): AgentStageSnapshot 
       targetRoles: state.candidateContext.targetRoles,
       skills: state.candidateContext.skills,
       resumeKeywords: state.candidateContext.resumeKeywords,
+      feedbackFacts: state.candidateContext.feedbackFacts ?? [],
       latestResumeSections: state.resumeDocuments[0]?.sections ?? []
     }
   };
@@ -301,6 +307,10 @@ export function deriveAgentPipelineSnapshot(state: CareerOSState, modelStatus: M
     reviewGate: {
       openCount: state.reviewItems.filter((review) => review.status === "open").length,
       items: state.reviewItems.filter((review) => review.status === "open").slice(0, 5)
+    },
+    constraints: {
+      sdkConcepts: [...agentSdkAlignmentNotes],
+      runtime: agentRuntimeConstraints
     },
     notifications: notifications.slice(0, 8),
     modelRouter: {

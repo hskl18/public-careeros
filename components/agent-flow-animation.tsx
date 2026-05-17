@@ -4,42 +4,42 @@ const flowStages = [
     label: "Mailbox",
     title: "Triage",
     detail: "Recruiting signal",
-    asset: "/agents/agent-inbox-triage.svg"
+    asset: "/agents/inbox-triage.svg"
   },
   {
     index: "02",
     label: "Workflow",
     title: "Extract",
     detail: "Typed proposal",
-    asset: "/agents/agent-workflow-extraction.svg"
+    asset: "/agents/workflow-extraction.svg"
   },
   {
     index: "03",
     label: "Evidence",
     title: "Review gate",
     detail: "Blocks mutation",
-    asset: "/agents/agent-review-evidence.svg"
+    asset: "/agents/review-evidence.svg"
   },
   {
     index: "04",
     label: "Resume",
     title: "Context",
     detail: "Candidate facts",
-    asset: "/agents/agent-resume-extraction.svg"
+    asset: "/agents/resume-extraction.svg"
   },
   {
     index: "05",
     label: "Notify",
     title: "Reminders",
     detail: "No stale follow-up",
-    asset: "/agents/agent-follow-up-task.svg"
+    asset: "/agents/follow-up-task.svg"
   },
   {
     index: "06",
     label: "Router",
     title: "Gemma/Ollama",
     detail: "Cloud or fallback",
-    asset: "/agents/agent-career-orchestrator.svg"
+    asset: "/agents/career-orchestrator.svg"
   }
 ];
 

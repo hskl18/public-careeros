@@ -1,0 +1,211 @@
+[
+  {
+    "id": "receipt_linkedin_application",
+    "dataset": "linkedin_job_postings_component",
+    "record": {
+      "company": "Signal Works",
+      "role": "Backend Engineer Intern",
+      "sourceLabel": "eval:linkedin:receipt",
+      "text": "Application submitted for Backend Engineer Intern at Signal Works. Source: LinkedIn. JD link: https://jobs.example.com/signal/backend-intern. Resume: resume-backend-v3.pdf.",
+      "applicationSource": "LinkedIn",
+      "jobDescriptionUrl": "https://jobs.example.com/signal/backend-intern",
+      "resumeVersion": "resume-backend-v3.pdf"
+    },
+    "expected": {
+      "action": "apply",
+      "stage": "applied"
+    }
+  },
+  {
+    "id": "recruiter_reply_next_steps",
+    "dataset": "enron_thread_style_component",
+    "record": {
+      "company": "Cedar Systems",
+      "role": "Full Stack Engineer",
+      "sourceLabel": "eval:email:recruiter-reply",
+      "text": "Recruiter reply from Maya at Cedar Systems: thanks for applying to Full Stack Engineer. Next steps are a short call; please send availability by May 18, 2026. Contact: Maya Patel <maya@cedar.example>."
+    },
+    "expected": {
+      "action": "apply",
+      "stage": "recruiter_reply"
+    }
+  },
+  {
+    "id": "oa_deadline_iso",
+    "dataset": "synthetic_recruiting_fixture",
+    "record": {
+      "company": "Helios Data",
+      "role": "Machine Learning Platform Intern",
+      "sourceLabel": "eval:recruiting:oa-iso",
+      "text": "Online assessment reminder: your OA for Machine Learning Platform Intern at Helios Data is due 2026-05-20. Use resume-ml-v4.pdf and the Handshake job post."
+    },
+    "expected": {
+      "action": "review",
+      "stage": "assessment"
+    }
+  },
+  {
+    "id": "oa_deadline_natural_date",
+    "dataset": "synthetic_recruiting_fixture",
+    "record": {
+      "company": "Atlas Robotics",
+      "role": "Product Engineer Intern",
+      "sourceLabel": "eval:recruiting:oa-natural-date",
+      "text": "Your OA for Product Engineer Intern at Atlas Robotics is due May 21, 2026 at 5 PM PT. Reply after completion so we can confirm the interview window."
+    },
+    "expected": {
+      "action": "review",
+      "stage": "assessment"
+    }
+  },
+  {
+    "id": "interview_phone_screen",
+    "dataset": "synthetic_recruiting_fixture",
+    "record": {
+      "company": "Northstar AI",
+      "role": "ML Intern",
+      "sourceLabel": "eval:recruiting:phone-screen",
+      "text": "We would like to schedule a phone screen for the ML Intern role at Northstar AI on May 22, 2026. Please send availability."
+    },
+    "expected": {
+      "action": "review",
+      "stage": "interview"
+    }
+  },
+  {
+    "id": "technical_interview",
+    "dataset": "synthetic_recruiting_fixture",
+    "record": {
+      "company": "Orbit Labs",
+      "role": "Platform Engineer",
+      "sourceLabel": "eval:recruiting:technical-screen",
+      "text": "Technical screen invitation for Platform Engineer at Orbit Labs. Interview date: 2026-05-24. Recruiter: Sam Lee <sam@orbit.example>."
+    },
+    "expected": {
+      "action": "review",
+      "stage": "interview"
+    }
+  },
+  {
+    "id": "offer_signal",
+    "dataset": "synthetic_recruiting_fixture",
+    "record": {
+      "company": "Cobalt Health",
+      "role": "Software Engineer Intern",
+      "sourceLabel": "eval:recruiting:offer",
+      "text": "Congratulations, the team is preparing an offer for Software Engineer Intern at Cobalt Health. Attached are offer details and salary: $48/hr."
+    },
+    "expected": {
+      "action": "review",
+      "stage": "offer"
+    }
+  },
+  {
+    "id": "rejection_not_selected",
+    "dataset": "synthetic_recruiting_fixture",
+    "record": {
+      "company": "Lumen Systems",
+      "role": "Data Engineer Intern",
+      "sourceLabel": "eval:recruiting:rejection",
+      "text": "Thank you for your time. You were not selected for the Data Engineer Intern role at Lumen Systems and we are not moving forward."
+    },
+    "expected": {
+      "action": "review",
+      "stage": "rejected"
+    }
+  },
+  {
+    "id": "ambiguous_company",
+    "dataset": "enron_thread_style_component",
+    "record": {
+      "company": "Unknown Company",
+      "role": "Candidate pipeline update",
+      "sourceLabel": "eval:email:ambiguous-company",
+      "text": "Maybe this is for either the platform role or the product role. The sender says next steps but gives no company proof."
+    },
+    "expected": {
+      "action": "review"
+    }
+  },
+  {
+    "id": "fake_job_processing_fee",
+    "dataset": "fake_vs_real_job_postings_component",
+    "record": {
+      "company": "Unknown Company",
+      "role": "Remote Data Entry",
+      "sourceLabel": "eval:safety:fake-job-fee",
+      "text": "URGENT remote job offer. Pay a processing fee today to unlock the role and receive your interview link."
+    },
+    "expected": {
+      "action": "review"
+    }
+  },
+  {
+    "id": "newsletter_noise",
+    "dataset": "spamassassin_noise_component",
+    "record": {
+      "company": "Unknown Company",
+      "role": "Unknown Role",
+      "sourceLabel": "eval:noise:newsletter",
+      "text": "Weekly product newsletter: new features, webinar invite, unsubscribe here, and a limited-time discount."
+    },
+    "expected": {
+      "action": "ignore"
+    }
+  },
+  {
+    "id": "password_reset_noise",
+    "dataset": "spamassassin_noise_component",
+    "record": {
+      "company": "Unknown Company",
+      "role": "Unknown Role",
+      "sourceLabel": "eval:noise:password-reset",
+      "text": "Your password reset security code is 123456. This account notification is not related to a job application."
+    },
+    "expected": {
+      "action": "ignore"
+    }
+  },
+  {
+    "id": "shipping_noise",
+    "dataset": "spamassassin_noise_component",
+    "record": {
+      "company": "Unknown Company",
+      "role": "Unknown Role",
+      "sourceLabel": "eval:noise:shipping",
+      "text": "Shipping notification: your delivery is arriving tomorrow. Track your package and view your invoice online."
+    },
+    "expected": {
+      "action": "ignore"
+    }
+  },
+  {
+    "id": "resume_context_fixture",
+    "dataset": "resume_dataset_component",
+    "record": {
+      "company": "Resume Context",
+      "role": "ML Engineer Intern",
+      "sourceLabel": "eval:resume:context",
+      "text": "Application submitted for ML Engineer Intern. Resume: resume-ml-projects-v4.pdf. Source: campus career fair. Skills include TypeScript, Python, machine learning systems, and review-gated automation."
+    },
+    "expected": {
+      "action": "apply",
+      "stage": "applied"
+    }
+  },
+  {
+    "id": "job_posting_fields",
+    "dataset": "linkedin_job_postings_component",
+    "record": {
+      "company": "Vector Search Labs",
+      "role": "AI Platform Intern",
+      "sourceLabel": "eval:linkedin:job-fields",
+      "text": "Application submitted for AI Platform Intern. Source: LinkedIn. Job description link: https://jobs.example.com/vector/ai-platform. Location: Remote US. Salary: $40/hr - $50/hr.",
+      "applicationSource": "LinkedIn"
+    },
+    "expected": {
+      "action": "apply",
+      "stage": "applied"
+    }
+  }
+]

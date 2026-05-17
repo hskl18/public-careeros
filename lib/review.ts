@@ -1,5 +1,6 @@
 import { nowIso } from "./id";
 import { appendAuditEvent, createAuditEvent } from "./audit";
+import { appendFeedbackFacts, buildReviewCorrectionFeedback } from "./feedback-memory";
 import type { Application, CareerOSState, ProposedMutation, ReviewItem } from "./types";
 import {
   applyProposedMutation,
@@ -49,9 +50,12 @@ function applyReviewedChange(
     item.id === application.id ? applyProposedMutation(application, revisedChange, "review") : item
   );
   const updatedApplication = applications.find((item) => item.id === application.id) ?? application;
+  const feedbackFacts =
+    status === "corrected" ? buildReviewCorrectionFeedback(review, revisedChange) : [];
 
   const nextState = {
     ...state,
+    candidateContext: status === "corrected" ? appendFeedbackFacts(state.candidateContext, feedbackFacts) : state.candidateContext,
     applications,
     reminders: refreshRemindersForMutation(state.reminders, updatedApplication, revisedChange),
     events: event && !state.events.some((item) => item.id === event.id) ? [event, ...state.events] : state.events,

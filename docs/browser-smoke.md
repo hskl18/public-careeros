@@ -12,6 +12,9 @@ against temporary CareerOS data directories, and does not touch the developer's
 workspace fixture, then produces the screenshot set used as local judge proof for
 the public demo.
 
+Pair this with `pnpm eval:pipeline` for executable product-loop proof. The eval
+command writes `eval/results.json` and `docs/media/eval-results.png`.
+
 Verified routes:
 
 - `/`
@@ -39,6 +42,17 @@ setup without looking like a broken product. Neither fixture requires Gmail, API
 keys, Ollama Cloud, desktop Ollama, or model downloads.
 
 ## Screenshot Proof Set
+
+Curated public assets:
+
+- `docs/media/judge-demo.png` — README-ready screenshot copied from the
+  sanitized judge-demo browser smoke.
+- `docs/media/submission-thumbnail-560x280.png` — cropped Kaggle card image from
+  the same sanitized judge demo.
+- `docs/media/architecture.png` — polished README/Kaggle
+  architecture diagram for the Gemma multi-agent pipeline.
+- `docs/media/eval-results.png` — pipeline eval graph for the Kaggle writeup
+  and README.
 
 Generated files:
 

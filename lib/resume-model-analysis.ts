@@ -1,4 +1,5 @@
 import { performance } from "perf_hooks";
+import { boundedAgentText, modelPromptConstraints, strictJsonPromptPrefix } from "./agent-constraints";
 import { checkOllamaStatus, ollamaApiUrl, ollamaHeaders, type ModelRuntimeOptions, type ModelStatusReport } from "./model-status";
 
 export interface ModelResumeSuggestion {
@@ -22,10 +23,6 @@ interface OllamaGenerateResponse {
   response?: string;
 }
 
-function boundedText(value: string, maxLength: number) {
-  return value.trim().replace(/\s+/g, " ").slice(0, maxLength);
-}
-
 function extractJsonObject(text: string | undefined) {
   if (!text) return undefined;
   const start = text.indexOf("{");
@@ -39,7 +36,7 @@ function extractJsonObject(text: string | undefined) {
 }
 
 function boundedString(value: unknown, maxLength: number) {
-  return typeof value === "string" ? boundedText(value, maxLength) : undefined;
+  return typeof value === "string" ? boundedAgentText(value, maxLength) : undefined;
 }
 
 function boundedStringArray(value: unknown, maxItems: number, maxLength: number) {
@@ -102,7 +99,7 @@ export async function analyzeResumeWithModel(
   }
 
   const fetchFn = options.fetchFn ?? fetch;
-  const timeoutMs = options.timeoutMs ?? 4500;
+  const timeoutMs = options.timeoutMs ?? modelPromptConstraints.timeoutMs.resume;
   const started = performance.now();
   try {
     const response = await fetchFn(ollamaApiUrl(report.endpoint, "/generate"), {
@@ -112,15 +109,17 @@ export async function analyzeResumeWithModel(
         model: report.modelTag,
         stream: false,
         prompt: [
-          "CareerOS resume/context agent. Return JSON only:",
-          "{confidence,summary,strengths,gaps,sections,reason,riskLevel}.",
+          strictJsonPromptPrefix(
+            "resume/context agent",
+            "{confidence,summary,strengths,gaps,sections,reason,riskLevel}"
+          ),
           "Arrays must be short. riskLevel is low|medium|high. Do not repeat raw resume.",
-          `Title: ${boundedText(title, 80)}`,
-          `Resume: ${boundedText(text, 900)}`
+          `Title: ${boundedAgentText(title, modelPromptConstraints.resumeTitleLimit)}`,
+          `Resume: ${boundedAgentText(text, modelPromptConstraints.resumeTextLimit)}`
         ].join("\n"),
         options: {
           temperature: 0,
-          num_predict: 220
+          num_predict: modelPromptConstraints.resumeMaxTokens
         }
       }),
       signal: AbortSignal.timeout(timeoutMs)

@@ -1,4 +1,5 @@
 import { performance } from "perf_hooks";
+import { boundedAgentText, modelPromptConstraints, strictJsonPromptPrefix } from "./agent-constraints";
 import { checkOllamaStatus, ollamaApiUrl, ollamaHeaders, type ModelRuntimeOptions, type ModelStatusReport } from "./model-status";
 import type { ApplicationStage, LocalImportRecord } from "./types";
 
@@ -33,10 +34,6 @@ const allowedStages: ReadonlySet<ApplicationStage> = new Set([
   "rejected"
 ]);
 
-function boundedText(value: string, maxLength: number) {
-  return value.trim().replace(/\s+/g, " ").slice(0, maxLength);
-}
-
 function isIsoDate(value: unknown): value is string {
   if (typeof value !== "string") return false;
   const date = new Date(value);
@@ -45,7 +42,7 @@ function isIsoDate(value: unknown): value is string {
 
 function optionalString(value: unknown, maxLength: number) {
   if (value === undefined || value === null || value === "") return undefined;
-  return typeof value === "string" ? boundedText(value, maxLength) : undefined;
+  return typeof value === "string" ? boundedAgentText(value, maxLength) : undefined;
 }
 
 function extractJsonObject(text: string | undefined) {
@@ -94,7 +91,8 @@ export function validateModelImportSuggestion(value: unknown): ModelImportSugges
 export async function analyzeImportRecordWithModel(
   record: LocalImportRecord,
   statusReport?: ModelStatusReport,
-  options: ModelRuntimeOptions = {}
+  options: ModelRuntimeOptions = {},
+  feedbackHints: string[] = []
 ): Promise<ModelImportAnalysis> {
   const report = statusReport ?? (await checkOllamaStatus(options));
   if (report.status !== "ready") {
@@ -105,7 +103,7 @@ export async function analyzeImportRecordWithModel(
   }
 
   const fetchFn = options.fetchFn ?? fetch;
-  const timeoutMs = options.timeoutMs ?? 3500;
+  const timeoutMs = options.timeoutMs ?? modelPromptConstraints.timeoutMs.workflow;
   const started = performance.now();
   try {
     const response = await fetchFn(ollamaApiUrl(report.endpoint, "/generate"), {
@@ -115,17 +113,22 @@ export async function analyzeImportRecordWithModel(
         model: report.modelTag,
         stream: false,
         prompt: [
-          "CareerOS workflow extractor. Return JSON only:",
-          "{confidence,summary,reason,stage,deadlineAt,followUpAt,contactName}.",
-          "Dates must be ISO or null. Do not repeat raw mail. Output is review-gated.",
-          `Company: ${boundedText(record.company, 64)}`,
-          `Role: ${boundedText(record.role, 64)}`,
-          `Source: ${boundedText(record.sourceLabel, 64)}`,
-          `Snippet: ${boundedText(record.text, 420)}`
+          strictJsonPromptPrefix(
+            "workflow extraction agent",
+            "{confidence,summary,reason,stage,deadlineAt,followUpAt,contactName}"
+          ),
+          "Dates must be ISO strings or null.",
+          `Company: ${boundedAgentText(record.company, modelPromptConstraints.workflowCompanyLimit)}`,
+          `Role: ${boundedAgentText(record.role, modelPromptConstraints.workflowRoleLimit)}`,
+          `Source: ${boundedAgentText(record.sourceLabel, modelPromptConstraints.workflowSourceLimit)}`,
+          `Snippet: ${boundedAgentText(record.text, modelPromptConstraints.workflowSnippetLimit)}`,
+          feedbackHints.length
+            ? `Local correction memory:\n${feedbackHints.map((hint) => `- ${boundedAgentText(hint, 180)}`).join("\n")}`
+            : "Local correction memory: none"
         ].join("\n"),
         options: {
           temperature: 0,
-          num_predict: 160
+          num_predict: modelPromptConstraints.workflowMaxTokens
         }
       }),
       signal: AbortSignal.timeout(timeoutMs)

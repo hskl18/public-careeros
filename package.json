@@ -24,7 +24,7 @@
     "url": "https://github.com/hskl18/public-careeros/issues"
   },
   "engines": {
-    "node": ">=22.5.0"
+    "node": "22.x"
   },
   "scripts": {
     "dev": "next dev",
@@ -32,10 +32,11 @@
     "start": "next start",
     "check": "tsc --noEmit",
     "test": "vitest run",
-    "smoke:browser": "tsx tools/browser-smoke.ts",
-    "smoke:ollama": "tsx tools/ollama-cloud-smoke.ts",
+    "eval:pipeline": "tsx tools/run-pipeline-eval.ts",
+    "smoke:browser": "tsx tools/run-browser-smoke.ts",
+    "smoke:ollama": "tsx tools/run-ollama-cloud-smoke.ts",
     "ci": "pnpm check && pnpm test && pnpm build",
-    "ci:public": "bash scripts/public-safety-check.sh && pnpm check && pnpm test && pnpm build && pnpm smoke:browser && git diff --check",
+    "ci:public": "bash scripts/public-safety-check.sh && pnpm check && pnpm test && pnpm eval:pipeline && pnpm build && pnpm smoke:browser && git diff --check",
     "release:check": "pnpm ci:public && pnpm smoke:ollama"
   },
   "dependencies": {

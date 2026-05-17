@@ -55,6 +55,9 @@ export function createSeedCandidateContext(): CandidateContext {
     skills: ["TypeScript", "SQL", "private-workspace systems", "model review gates"],
     preferences: ["privacy-preserving workflow", "evidence-backed decisions", "internship and new-grad roles"],
     resumeKeywords: ["CareerOS", "resume intelligence", "notification derivation", "review-gated automation"],
+    feedbackFacts: [
+      "Correction memory: assessment and interview deadlines stay review-gated until the candidate confirms the exact date."
+    ],
     updatedAt: createdAt
   };
 }
@@ -66,6 +69,7 @@ export function createEmptyCandidateContext(): CandidateContext {
     skills: [],
     preferences: [],
     resumeKeywords: [],
+    feedbackFacts: [],
     updatedAt: nowIso()
   };
 }

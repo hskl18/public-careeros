@@ -1,0 +1,307 @@
+{
+  "generatedAt": "2026-05-17T11:08:24.344Z",
+  "totalCases": 15,
+  "passed": 15,
+  "passRate": 100,
+  "metrics": [
+    {
+      "label": "Overall",
+      "value": 100,
+      "numerator": 15,
+      "denominator": 15
+    },
+    {
+      "label": "Action",
+      "value": 100,
+      "numerator": 15,
+      "denominator": 15
+    },
+    {
+      "label": "Stage",
+      "value": 100,
+      "numerator": 10,
+      "denominator": 10
+    },
+    {
+      "label": "Review gate",
+      "value": 100,
+      "numerator": 15,
+      "denominator": 15
+    },
+    {
+      "label": "Mutation safety",
+      "value": 100,
+      "numerator": 15,
+      "denominator": 15
+    }
+  ],
+  "byDataset": [
+    {
+      "dataset": "linkedin_job_postings_component",
+      "cases": 2,
+      "passed": 2,
+      "passRate": 100
+    },
+    {
+      "dataset": "enron_thread_style_component",
+      "cases": 2,
+      "passed": 2,
+      "passRate": 100
+    },
+    {
+      "dataset": "synthetic_recruiting_fixture",
+      "cases": 6,
+      "passed": 6,
+      "passRate": 100
+    },
+    {
+      "dataset": "fake_vs_real_job_postings_component",
+      "cases": 1,
+      "passed": 1,
+      "passRate": 100
+    },
+    {
+      "dataset": "spamassassin_noise_component",
+      "cases": 3,
+      "passed": 3,
+      "passRate": 100
+    },
+    {
+      "dataset": "resume_dataset_component",
+      "cases": 1,
+      "passed": 1,
+      "passRate": 100
+    }
+  ],
+  "publicDatasetComponents": [
+    {
+      "name": "Enron Email Dataset",
+      "url": "https://www.kaggle.com/datasets/wcukierski/enron-email-dataset",
+      "use": "mailbox parsing, noisy non-recruiting email, thread-style evidence"
+    },
+    {
+      "name": "SpamAssassin Email Classification",
+      "url": "https://www.kaggle.com/datasets/ganiyuolalekan/spam-assassin-email-classification-dataset",
+      "use": "spam/noise filtering before workflow extraction"
+    },
+    {
+      "name": "LinkedIn Job Postings 2023-2024",
+      "url": "https://www.kaggle.com/datasets/arshkon/linkedin-job-postings/data",
+      "use": "company, role, JD link, source, salary, location, and skills fields"
+    },
+    {
+      "name": "Resume dataset",
+      "url": "https://www.kaggle.com/datasets/haidermaseeh/resume-dataset",
+      "use": "resume/context agent component validation"
+    },
+    {
+      "name": "Fake vs Real Job Postings",
+      "url": "https://www.kaggle.com/datasets/khushikyad001/fake-vs-real-job-postings-synthetic-nlp-dataset",
+      "use": "suspicious job evidence routed to review instead of trusted mutation"
+    }
+  ],
+  "cases": [
+    {
+      "id": "receipt_linkedin_application",
+      "dataset": "linkedin_job_postings_component",
+      "expectedAction": "apply",
+      "actualAction": "apply",
+      "expectedStage": "applied",
+      "actualStage": "applied",
+      "actionPass": true,
+      "stagePass": true,
+      "reviewGatePass": true,
+      "mutationSafetyPass": true,
+      "passed": true,
+      "notes": []
+    },
+    {
+      "id": "recruiter_reply_next_steps",
+      "dataset": "enron_thread_style_component",
+      "expectedAction": "apply",
+      "actualAction": "apply",
+      "expectedStage": "recruiter_reply",
+      "actualStage": "recruiter_reply",
+      "actionPass": true,
+      "stagePass": true,
+      "reviewGatePass": true,
+      "mutationSafetyPass": true,
+      "passed": true,
+      "notes": []
+    },
+    {
+      "id": "oa_deadline_iso",
+      "dataset": "synthetic_recruiting_fixture",
+      "expectedAction": "review",
+      "actualAction": "review",
+      "expectedStage": "assessment",
+      "actualStage": "assessment",
+      "actionPass": true,
+      "stagePass": true,
+      "reviewGatePass": true,
+      "mutationSafetyPass": true,
+      "passed": true,
+      "notes": []
+    },
+    {
+      "id": "oa_deadline_natural_date",
+      "dataset": "synthetic_recruiting_fixture",
+      "expectedAction": "review",
+      "actualAction": "review",
+      "expectedStage": "assessment",
+      "actualStage": "assessment",
+      "actionPass": true,
+      "stagePass": true,
+      "reviewGatePass": true,
+      "mutationSafetyPass": true,
+      "passed": true,
+      "notes": []
+    },
+    {
+      "id": "interview_phone_screen",
+      "dataset": "synthetic_recruiting_fixture",
+      "expectedAction": "review",
+      "actualAction": "review",
+      "expectedStage": "interview",
+      "actualStage": "interview",
+      "actionPass": true,
+      "stagePass": true,
+      "reviewGatePass": true,
+      "mutationSafetyPass": true,
+      "passed": true,
+      "notes": []
+    },
+    {
+      "id": "technical_interview",
+      "dataset": "synthetic_recruiting_fixture",
+      "expectedAction": "review",
+      "actualAction": "review",
+      "expectedStage": "interview",
+      "actualStage": "interview",
+      "actionPass": true,
+      "stagePass": true,
+      "reviewGatePass": true,
+      "mutationSafetyPass": true,
+      "passed": true,
+      "notes": []
+    },
+    {
+      "id": "offer_signal",
+      "dataset": "synthetic_recruiting_fixture",
+      "expectedAction": "review",
+      "actualAction": "review",
+      "expectedStage": "offer",
+      "actualStage": "offer",
+      "actionPass": true,
+      "stagePass": true,
+      "reviewGatePass": true,
+      "mutationSafetyPass": true,
+      "passed": true,
+      "notes": []
+    },
+    {
+      "id": "rejection_not_selected",
+      "dataset": "synthetic_recruiting_fixture",
+      "expectedAction": "review",
+      "actualAction": "review",
+      "expectedStage": "rejected",
+      "actualStage": "rejected",
+      "actionPass": true,
+      "stagePass": true,
+      "reviewGatePass": true,
+      "mutationSafetyPass": true,
+      "passed": true,
+      "notes": []
+    },
+    {
+      "id": "ambiguous_company",
+      "dataset": "enron_thread_style_component",
+      "expectedAction": "review",
+      "actualAction": "review",
+      "actualStage": "recruiter_reply",
+      "actionPass": true,
+      "stagePass": true,
+      "reviewGatePass": true,
+      "mutationSafetyPass": true,
+      "passed": true,
+      "notes": []
+    },
+    {
+      "id": "fake_job_processing_fee",
+      "dataset": "fake_vs_real_job_postings_component",
+      "expectedAction": "review",
+      "actualAction": "review",
+      "actualStage": "offer",
+      "actionPass": true,
+      "stagePass": true,
+      "reviewGatePass": true,
+      "mutationSafetyPass": true,
+      "passed": true,
+      "notes": []
+    },
+    {
+      "id": "newsletter_noise",
+      "dataset": "spamassassin_noise_component",
+      "expectedAction": "ignore",
+      "actualAction": "ignore",
+      "actionPass": true,
+      "stagePass": true,
+      "reviewGatePass": true,
+      "mutationSafetyPass": true,
+      "passed": true,
+      "notes": []
+    },
+    {
+      "id": "password_reset_noise",
+      "dataset": "spamassassin_noise_component",
+      "expectedAction": "ignore",
+      "actualAction": "ignore",
+      "actionPass": true,
+      "stagePass": true,
+      "reviewGatePass": true,
+      "mutationSafetyPass": true,
+      "passed": true,
+      "notes": []
+    },
+    {
+      "id": "shipping_noise",
+      "dataset": "spamassassin_noise_component",
+      "expectedAction": "ignore",
+      "actualAction": "ignore",
+      "actionPass": true,
+      "stagePass": true,
+      "reviewGatePass": true,
+      "mutationSafetyPass": true,
+      "passed": true,
+      "notes": []
+    },
+    {
+      "id": "resume_context_fixture",
+      "dataset": "resume_dataset_component",
+      "expectedAction": "apply",
+      "actualAction": "apply",
+      "expectedStage": "applied",
+      "actualStage": "applied",
+      "actionPass": true,
+      "stagePass": true,
+      "reviewGatePass": true,
+      "mutationSafetyPass": true,
+      "passed": true,
+      "notes": []
+    },
+    {
+      "id": "job_posting_fields",
+      "dataset": "linkedin_job_postings_component",
+      "expectedAction": "apply",
+      "actualAction": "apply",
+      "expectedStage": "applied",
+      "actualStage": "applied",
+      "actionPass": true,
+      "stagePass": true,
+      "reviewGatePass": true,
+      "mutationSafetyPass": true,
+      "passed": true,
+      "notes": []
+    }
+  ]
+}
