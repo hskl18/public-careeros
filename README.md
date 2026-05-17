@@ -18,6 +18,7 @@ not another chatbot.
 Project links:
 
 - [Public judge demo](https://public-careeros.vercel.app/judge-demo)
+- [Demo video](https://youtu.be/PTrMwv0bF4E)
 - [Hosted product](https://www.careeroc.com)
 - [Source repository](https://github.com/hskl18/public-careeros)
 
