@@ -12,6 +12,9 @@ full hosted Other Candidate codebase.
 bounded email evidence -> extraction -> review gate -> application state,
 reminders, and notifications.
 
+Other Candidate is a Gemma 4 powered multi-agent recruiting mailbox pipeline,
+not another chatbot.
+
 Run it with:
 
 ```bash
