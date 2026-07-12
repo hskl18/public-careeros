@@ -35,9 +35,9 @@ const seededRoutes: SmokeRoute[] = [
     path: "/judge-demo",
     copy: [
       "CareerOS public demo",
-      "sanitized sample",
-      "Gemma via Ollama Cloud",
-      "review gates",
+      "sanitized fixture",
+      "Deterministic fixture mode",
+      "No live-model quality result",
       "not the full hosted Other Candidate source"
     ]
   },
@@ -60,7 +60,12 @@ const emptyRoutes: SmokeRoute[] = [
   },
   {
     path: "/judge-demo",
-    copy: ["CareerOS public demo", "sanitized sample", "no Gmail or model key", "Gemma via Ollama Cloud"]
+    copy: [
+      "CareerOS public demo",
+      "sanitized fixture",
+      "without Gmail or a model key",
+      "Deterministic fixture mode"
+    ]
   },
   {
     path: "/applications",

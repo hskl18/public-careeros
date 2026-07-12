@@ -22,8 +22,8 @@ repo is the limited public hackathon demo/source package: one Next.js app,
 local workspace state, optional Gmail readonly sync, optional Gemma via Ollama
 Cloud, deterministic fallback, and no separate backend stack.
 
-Current judge-demo completion score: **10/10 for the public Kaggle/Gemma
-demo scope**. This does not claim hosted Other Candidate production parity.
+The public judge-demo scope is implemented and covered by the repository verification commands.
+This does not claim hosted Other Candidate production parity.
 
 ## Ranking-Ready Submission Shape
 
@@ -170,8 +170,7 @@ eval/results.json
 docs/media/eval-results.png
 ```
 
-Current result: **15/15 passed** across action routing, stage extraction,
-review-gate behavior, and mutation safety.
+Current deterministic result: **118/130 passed** with 12 false review routes for recruiter replies and 0 unsafe automatic mutations.
 
 The eval uses public dataset components plus sanitized local recruiting
 fixtures:
@@ -256,9 +255,8 @@ pnpm smoke:ollama
 git diff --check
 ```
 
-Current unit coverage after route-handler hardening and feedback-memory work:
-`85/85` tests passing.
-Current pipeline eval: `15/15` fixtures passing.
+Current unit coverage after adding evaluation-artifact checks: `88/88` tests passing.
+Current pipeline eval: `118/130` deterministic fixtures passing with the configured safety gate satisfied.
 
 `pnpm smoke:browser` passes and covers seeded plus clean workspace
 desktop/mobile render, required judge/demo copy, no horizontal overflow, no

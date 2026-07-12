@@ -6,9 +6,7 @@ CareerOS open-source demo of the Other Candidate workflow, built as one Next.js
 app with Gmail readonly sync, local workspace state, review gates, and optional
 Gemma through Ollama Cloud.
 
-Core judging line: **this is not a generic chatbot**. CareerOS is a recruiting
-mailbox pipeline where bounded evidence becomes extracted application state
-only after traceable model/rules output and review gates.
+CareerOS is a recruiting mailbox pipeline where bounded evidence becomes extracted application state only after traceable model or rules output and review gates.
 
 ## Ranking Strategy
 
@@ -22,7 +20,7 @@ real.
 | Is Gemma central?                        | Gemma handles bounded triage, workflow extraction, evidence review, resume/context analysis, and notification summaries.   | `/agents`, `/api/pipeline`, model trace panel              |
 | Is it more than a chatbot?               | The output is structured application state, reminders, review items, and notifications, not a chat transcript.             | `/judge-demo`, `/applications`, `/review`                  |
 | Is it safe enough for career automation? | Risky or model-backed changes require review, and traces expose evidence, confidence, fallback, and model path.            | `/review`, `SECURITY.md`, `docs/architecture.md`           |
-| Can judges reproduce it?                 | `pnpm install && pnpm dev` runs a credential-free demo; `pnpm eval:pipeline` regenerates the 15/15 proof graph.            | `README.md`, `docs/eval.md`, `docs/media/eval-results.png` |
+| Can judges reproduce it?                 | `pnpm install && pnpm dev` runs a credential-free demo; `pnpm eval:generate && pnpm eval:pipeline` regenerates the 130-case deterministic artifact. | `README.md`, `docs/eval.md`, `docs/media/eval-results.png` |
 
 The strongest submission angle is **agentic job-search infrastructure for a
 high-volume real-world workflow**: Gemma reads bounded evidence, agents propose
@@ -334,7 +332,7 @@ repo should only claim what this repo actually ships.
 | Is Gemma central? | Gemma handles bounded triage, workflow extraction, evidence review, resume/context analysis, and notification summaries. | `/agents`, `/api/pipeline`, model trace panel |
 | Is it more than a chatbot? | The output is structured application state, reminders, review items, and notifications, not a chat transcript. | `/judge-demo`, `/applications`, `/review` |
 | Is it safe enough for career automation? | Risky or model-backed changes require review, and traces expose evidence, confidence, fallback, and model path. | `/review`, `SECURITY.md`, `docs/architecture.md` |
-| Can judges reproduce it? | `pnpm install && pnpm dev` runs a credential-free demo; `pnpm eval:pipeline` regenerates the 15/15 proof graph. | `README.md`, `docs/eval.md`, `docs/media/eval-results.png` |
+| Can judges reproduce it? | `pnpm install && pnpm dev` runs a credential-free demo; `pnpm eval:generate && pnpm eval:pipeline` regenerates the 130-case deterministic artifact. | `README.md`, `docs/eval.md`, `docs/media/eval-results.png` |
 
 Other Candidate is a Gmail-first career workflow assistant for job seekers. It
 connects to Gmail, finds recruiting emails, and turns scattered messages into a
@@ -365,25 +363,12 @@ evidence-backed.
 
 ## Evaluation Evidence
 
-CareerOS includes an executable pipeline eval so the submission is not just a
-UI story. `pnpm eval:pipeline` runs 15 judge-safe fixtures mapped to public
-dataset components:
+CareerOS includes an executable deterministic pipeline eval.
+`pnpm eval:pipeline` runs 130 sanitized synthetic fixtures across ten workflow categories.
+Public email, spam, job-posting, resume, and suspicious-job datasets informed the taxonomy, but the checked-in cases are labeled synthetic rather than presented as sampled source records.
 
-- Enron Email Dataset for mailbox/thread-style text.
-- SpamAssassin Email Classification for email noise.
-- LinkedIn Job Postings 2023-2024 for company, role, location, salary,
-  source URL, and application URL fields.
-- Resume dataset for candidate-context text.
-- Fake vs Real Job Postings for suspicious-job evidence.
-- Synthetic recruiting fixtures for OA deadlines, phone screens, technical
-  interviews, offers, rejections, ambiguous recruiter replies, and resume
-  context, because public datasets do not directly label the full recruiting
-  workflow state.
-
-Current result: **15/15 passed** across action routing, stage extraction,
-review-gate behavior, and mutation safety. The generated graph is
-`docs/media/eval-results.png`; the machine-readable output is
-`eval/results.json`.
+Current result: **118/130 passed** with 12 false review routes for recruiter replies and 0 unsafe automatic mutations.
+The generated graph is `docs/media/eval-results.png`; the machine-readable output is `eval/results.json`.
 
 ![CareerOS pipeline eval results](media/eval-results.png)
 
