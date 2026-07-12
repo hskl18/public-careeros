@@ -123,9 +123,8 @@ Other Candidate or advanced self-hosting:
 
 ## Engineering Follow-Up
 
-- Treat the current release as a 10/10 judge-demo package for the public
-  Kaggle/Gemma scope. Hosted-product parity remains explicitly out of scope for
-  this repo.
+- Treat the current release as a bounded judge-demo package for the public Kaggle/Gemma scope.
+  Hosted-product parity remains explicitly out of scope for this repo.
 - Keep follow-up work grounded in [release-summary.md](release-summary.md) and
   [eval.md](eval.md): proof curation, sanitized Gmail recording, broader fake
   mailbox eval depth, and focused accessibility/mobile polish.

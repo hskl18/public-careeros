@@ -4,16 +4,11 @@
 
 ![CareerOS judge demo: recruiting mailbox evidence becomes a review-gated application pipeline](docs/media/judge-demo.png)
 
-CareerOS is the public Gemma hackathon demo of the CareerOS / Other Candidate
-recruiting inbox pipeline. It is a judge-facing local demo/source repo, not the
-full hosted Other Candidate codebase.
+CareerOS is the primary public name for this recruiting-inbox workflow.
+It turns bounded email evidence into proposed application updates, then requires review before risky changes reach tracker state.
+The separately hosted product uses the name Other Candidate at `careeroc.com`; this repository is its sanitized hackathon demo and does not contain the hosted product source.
 
-**This is not a generic chatbot.** It is a recruiting mailbox pipeline:
-bounded email evidence -> extraction -> review gate -> application state,
-reminders, and notifications.
-
-Other Candidate is a Gemma 4 powered multi-agent recruiting mailbox pipeline,
-not another chatbot.
+![CareerOS architecture: bounded mailbox evidence, agent extraction, review gate, and application state](docs/media/architecture.png)
 
 Project links:
 
@@ -41,44 +36,45 @@ What judges should see immediately:
 - evidence -> extraction -> review gate -> application/reminder loop
 - model traces and review gates instead of a generic chatbot transcript
 
-## Kaggle Judge TL;DR
+## 20-second reviewer path
+
+1. Open the [credential-free judge demo](https://public-careeros.vercel.app/judge-demo).
+2. Follow one sanitized recruiter thread from evidence to a typed proposal.
+3. Confirm that the review gate blocks the proposed update before tracker mutation.
+4. Inspect the deterministic fixture result and the open error analysis below.
 
 | Judging signal | What this repo proves |
 | --- | --- |
 | Real-world impact | Job-search state is trapped in recruiting email; CareerOS turns it into reminders, application stages, and reviewable actions. |
-| Gemma depth | Gemma is used for bounded triage, workflow extraction, evidence review, resume/context analysis, and notification summaries, not open-ended chat. |
-| Safety & trust | Risky updates stop at review gates; traces keep model path, confidence, evidence, and fallback without storing raw Gmail bodies or provider keys. |
-| Reproducibility | `pnpm install && pnpm dev` opens `/judge-demo` with no credentials, and `pnpm eval:pipeline` regenerates the 15/15 pipeline proof graph. |
-| Demo quality | The judge path shows the full loop: mailbox evidence -> agent extraction -> review gate -> application/reminder/notification output. |
+| Agent path | Bounded triage, extraction, evidence review, resume context, and notification layers produce inspectable handoffs rather than a chat transcript. |
+| Safety boundary | Risky updates stop at review gates; traces retain provider, confidence, bounded evidence, and fallback status without raw Gmail bodies or provider keys. |
+| Reproducibility | `pnpm eval:generate && pnpm eval:pipeline` regenerates 130 labeled deterministic fixtures, metrics, error cases, JSON results, and the proof graph. |
+| Current result | 118/130 contracts pass. All 12 failures are false review routes for recruiter replies; unsafe automatic mutation remains 0%. |
 
 ## Eval Proof
 
 ![CareerOS pipeline eval results](docs/media/eval-results.png)
 
-`pnpm eval:pipeline` runs 15 judge-safe fixtures mapped to public dataset
-components from Enron email, SpamAssassin email classification, LinkedIn job
-postings, resume NLP data, and fake-job-posting data. Current result:
-**15/15 passed** across action routing, stage extraction, review-gate behavior,
-and mutation safety.
+`pnpm eval:pipeline` runs 130 versioned, sanitized synthetic fixtures across application receipts, recruiter replies, assessments, interviews, offers, rejections, ambiguous updates, suspicious jobs, adversarial content, and non-recruiting noise.
+Current deterministic result: **118/130 passed** with a 90.8% contract pass rate and a 95% Wilson interval of 84.6% to 94.6%.
+The runner observed 0 unsafe automatic mutations.
+It also found 12 false review routes in recruiter-reply cases, which remain checked in as error-analysis evidence.
 
 The eval writes machine-readable results to `eval/results.json` and renders the
 graph with `tools/render_eval_graph.py` using Python/matplotlib. If a local
 machine does not have matplotlib, run `python3 -m pip install matplotlib` before
 regenerating the graph. GitHub Actions installs it before `pnpm ci:public`.
 
-This is intentionally not claimed as a broad ML benchmark. It is a product-loop
-eval for the hackathon claim: bounded mailbox evidence becomes extracted
-application state only when the pipeline can classify it safely, and risky
-updates stop at review.
+This is a deterministic product-loop regression eval, not a live-model or open-domain accuracy benchmark.
+No provider API is called, so observed model cost is $0 by construction and is reported separately from any future live-model run.
+See [evaluation methodology and error analysis](docs/eval.md) and the [end-to-end case study](docs/case-study.md).
 
-## 20-Second Judge Path
+## Local judge path
 
 1. Clone the repo and run `pnpm install && pnpm dev`.
 2. Open `http://localhost:3000/judge-demo`.
 3. Watch the sanitized recruiter thread become an extracted application update.
-4. Check the trace panel: Gemma via Ollama Cloud is the model path,
-   deterministic fallback is visible, and risky state changes stop at the
-   review gate.
+4. Check the trace panel: the credential-free fixture names the deterministic provider, reports optional Gemma readiness separately, and stops risky state changes at review.
 5. Open `/agents` for the agent contracts and can/cannot-do boundaries.
 
 ## Public Vercel Demo
@@ -91,9 +87,8 @@ The judge-facing deployment should be public and credential-free:
 - keep `/judge-demo` as the primary Kaggle link
 - optionally set `NEXT_PUBLIC_SITE_URL=https://your-vercel-domain`
 
-The app is safe to deploy without keys. On Vercel, workspace state falls back
-to ephemeral `/tmp/.careeros-data` storage unless `CAREEROS_DATA_DIR` is set,
-so the public demo can render without a database or writable repo directory.
+The app renders the judge route without provider keys.
+On Vercel, workspace state falls back to ephemeral `/tmp/.careeros-data` storage unless `CAREEROS_DATA_DIR` is set, so the public demo can render without a database or writable repo directory.
 Without `OLLAMA_API_KEY`, model status shows deterministic fallback; the video
 or local `pnpm smoke:ollama` can separately prove the live Ollama Cloud path.
 
@@ -103,16 +98,7 @@ Runtime pinning:
   Node 24 instead of auto-upgrading to a future major Node release.
 - `.node-version` also pins local and CI tooling to Node 24.
 
-## Pipeline Diagram
-
-This diagram is a compact readme/reference asset for the technical flow. It is
-not used as the app hero.
-
-![CareerOS Gemma multi-agent recruiting pipeline](docs/media/architecture.png)
-
-CareerOS turns recruiting email into structured application state with a
-multi-agent workflow. It is intentionally still the CareerOS pipeline, not a
-plain job dashboard:
+CareerOS turns recruiting email into structured application state with a multi-agent workflow:
 
 1. Mailbox triage
 2. Workflow extraction
@@ -121,10 +107,7 @@ plain job dashboard:
 5. Reminder and notification generation
 6. Model routing through Gemma via Ollama Cloud
 
-The hosted product is **Other Candidate** at `careeroc.com`. This repo is the
-open-source hackathon demo: one Next.js app, local JSON state, optional Gmail
-readonly sync, optional Ollama Cloud/Gemma analysis, deterministic fallback,
-and no separate backend stack.
+The implementation scope is one Next.js app with local JSON state, optional Gmail readonly sync, optional Ollama Cloud analysis, deterministic fallback, and no separate backend stack.
 
 ## Agent Contract
 

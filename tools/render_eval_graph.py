@@ -11,6 +11,7 @@ import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from matplotlib.ticker import MaxNLocator
 from matplotlib.patches import FancyBboxPatch
 
 
@@ -32,7 +33,7 @@ def _format_dataset_name(name: str) -> str:
 def render(results_path: Path, output_path: Path) -> None:
     results = _load_results(results_path)
     metrics = results["metrics"]
-    datasets = results["byDataset"]
+    categories = results["byCategory"]
 
     plt.rcParams.update(
         {
@@ -86,7 +87,7 @@ def render(results_path: Path, output_path: Path) -> None:
     stamp = fig.text(
         0.955,
         0.925,
-        f"{results['passed']}/{results['totalCases']} cases passed  |  generated {generated}",
+        f"{results['passed']}/{results['totalCases']} cases passed  |  deterministic fixtures  |  {generated}",
         ha="right",
         va="top",
         fontsize=10.5,
@@ -162,38 +163,29 @@ def render(results_path: Path, output_path: Path) -> None:
     for spine in ax_data.spines.values():
         spine.set_visible(False)
 
-    dataset_label_map = {
-        "linkedin_job_postings_component": "LinkedIn jobs",
-        "enron_thread_style_component": "Email thread style",
-        "synthetic_recruiting_fixture": "Recruiting workflow",
-        "fake_vs_real_job_postings_component": "Fraud signal",
-        "spamassassin_noise_component": "Inbox noise",
-        "resume_dataset_component": "Resume context",
-    }
-    dataset_labels = [dataset_label_map.get(item["dataset"], _format_dataset_name(item["dataset"])) for item in datasets]
-    dataset_cases = [item["cases"] for item in datasets]
-    dataset_positions = list(range(len(dataset_labels)))
+    category_labels = [_format_dataset_name(item["category"]) for item in categories]
+    category_cases = [item["cases"] for item in categories]
+    category_positions = list(range(len(category_labels)))
     colors = ["#1d4ed8", "#2563eb", "#60a5fa", "#14b8a6", "#f59e0b", "#94a3b8"]
 
-    ax_data.barh(dataset_positions, dataset_cases, color=colors[: len(dataset_cases)], height=0.58)
-    ax_data.set_xlim(0, max(dataset_cases) + 1.5)
-    ax_data.set_yticks(dataset_positions)
-    ax_data.set_yticklabels(dataset_labels, fontweight="bold")
+    ax_data.barh(category_positions, category_cases, color=[colors[index % len(colors)] for index in category_positions], height=0.58)
+    ax_data.set_xlim(0, max(category_cases) + 6)
+    ax_data.set_yticks(category_positions)
+    ax_data.set_yticklabels(category_labels, fontweight="bold")
     ax_data.tick_params(axis="y", labelsize=10.5)
     ax_data.invert_yaxis()
-    ax_data.set_title("Fixture coverage by data source", loc="left", fontsize=13, pad=14, color="#0f172a")
+    ax_data.set_title("Fixture coverage by workflow class", loc="left", fontsize=13, pad=14, color="#0f172a")
     ax_data.grid(axis="x", color="#e2e8f0", linewidth=1)
     ax_data.set_axisbelow(True)
     ax_data.tick_params(axis="y", length=0)
     ax_data.tick_params(axis="x", length=0)
-    ax_data.set_xticks([0, 2, 4, 6])
-    ax_data.set_xticklabels(["0", "2", "4", "6"])
+    ax_data.xaxis.set_major_locator(MaxNLocator(integer=True, nbins=5))
 
-    for position, count, dataset in zip(dataset_positions, dataset_cases, datasets):
+    for position, count, category in zip(category_positions, category_cases, categories):
         ax_data.text(
             count + 0.12,
             position,
-            f"{count} cases · {dataset['passRate']:.0f}%",
+            f"{count} cases · {category['passRate']:.0f}%",
             va="center",
             ha="left",
             fontsize=9,

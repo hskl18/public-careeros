@@ -35,9 +35,9 @@ function modelHeaderState(
 }
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
-const metadataTitle = "CareerOS - CareerOC Demo";
+const metadataTitle = "CareerOS - Recruiting Inbox Demo";
 const metadataDescription =
-  "A Next.js demo of the CareerOC multi-agent job mailbox pipeline, using Gmail readonly sync, review gates, and Gemma via Ollama Cloud.";
+  "A review-gated recruiting inbox workflow with deterministic fixtures, optional Gmail readonly sync, and an optional Gemma provider path.";
 
 const geistSans = Geist({
   subsets: ["latin"],

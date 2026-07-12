@@ -32,11 +32,12 @@
     "start": "next start",
     "check": "tsc --noEmit",
     "test": "vitest run",
+    "eval:generate": "node tools/generate-pipeline-fixtures.mjs",
     "eval:pipeline": "tsx tools/run-pipeline-eval.ts",
     "smoke:browser": "tsx tools/run-browser-smoke.ts",
     "smoke:ollama": "tsx tools/run-ollama-cloud-smoke.ts",
     "ci": "pnpm check && pnpm test && pnpm build",
-    "ci:public": "bash scripts/public-safety-check.sh && pnpm check && pnpm test && pnpm eval:pipeline && pnpm build && pnpm smoke:browser && git diff --check",
+    "ci:public": "bash scripts/public-safety-check.sh && pnpm check && pnpm test && pnpm eval:generate && pnpm eval:pipeline && pnpm build && pnpm smoke:browser && git diff --check",
     "release:check": "pnpm ci:public && pnpm smoke:ollama"
   },
   "dependencies": {

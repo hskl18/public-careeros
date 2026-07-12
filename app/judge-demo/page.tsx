@@ -34,9 +34,8 @@ export default async function JudgeDemoPage() {
             <p className="eyebrow">Kaggle Gemma 4 Good judge demo</p>
             <h1>CareerOS public demo: recruiting mail becomes a reviewed job pipeline</h1>
             <p>
-              CareerOS is the limited open-source hackathon demo of the Other Candidate workflow at careeroc.com. This
-              route uses sanitized sample mail, requires no Gmail or model key, and shows how Gemma via Ollama Cloud,
-              deterministic fallback, evidence, and review gates work before state mutation.
+              This route runs a sanitized fixture through evidence, extraction, and review boundaries without Gmail or
+              a model key. Optional Gemma readiness is reported separately from the deterministic fixture path.
             </p>
             <p className="review-demo-hint">
               It is not the full hosted Other Candidate source; it is the public demo/source repo for the agentic
@@ -58,9 +57,13 @@ export default async function JudgeDemoPage() {
             <img className="agent-runtime-mascot" src="/mascots/inbox-buddy-review-gate.svg" alt="" aria-hidden="true" />
             <span className={`agent-runtime-led ${isGemmaReady ? "ready" : "fallback"}`} />
             <p className="eyebrow">Model path</p>
-            <strong>Gemma via Ollama Cloud</strong>
+            <strong>{isGemmaReady ? "Live Gemma readiness verified" : "Deterministic fixture mode"}</strong>
             <span>{modelStatusLabel(modelStatus.status)} · {modelStatus.modelTag}</span>
-            <small>No desktop model runtime. Deterministic fallback remains available.</small>
+            <small>
+              {isGemmaReady
+                ? "The provider health check passed; model output still enters review."
+                : "No live-model quality result is implied by this credential-free demo."}
+            </small>
           </aside>
         </header>
 
@@ -87,8 +90,8 @@ export default async function JudgeDemoPage() {
 
             <section className="mailbox-transform-panel">
               <div className="agent-panel-head">
-                <p className="eyebrow">Live demo object</p>
-                <h2>Random recruiter email becomes a reviewed tracker update</h2>
+                <p className="eyebrow">Sanitized fixture</p>
+                <h2>Recruiter evidence becomes a reviewed tracker proposal</h2>
               </div>
               <div className="mail-thread">
                 {judgeMailboxThread.map((message) => (
@@ -136,8 +139,14 @@ export default async function JudgeDemoPage() {
               </div>
               <div className="trace-stack">
                 <article>
-                  <span className="badge info">provider: ollama/{modelStatus.modelTag}</span>
-                  <p>Gemma produces a bounded proposal through Ollama Cloud. If unavailable, deterministic parsing keeps the demo usable.</p>
+                  <span className="badge info">
+                    provider: {isGemmaReady ? `ollama/${modelStatus.modelTag}` : "deterministic"}
+                  </span>
+                  <p>
+                    {isGemmaReady
+                      ? "The live provider health check passed. Any model-backed proposal still enters review."
+                      : "This fixture uses deterministic parsing. The separate model status does not count as a quality run."}
+                  </p>
                 </article>
                 <article>
                   <p className="eyebrow">Evidence snippets</p>
@@ -205,9 +214,9 @@ export default async function JudgeDemoPage() {
           </section>
 
           <section className="agent-proof-band">
-            <p className="eyebrow">Product proof</p>
-            <strong>Built from a real high-volume recruiting workflow with offers, OA deadlines, and recruiter follow-ups.</strong>
-            <span>The technical story is the review-gated Gemma pipeline — every claim is reproducible from sanitized fixtures.</span>
+            <p className="eyebrow">Reproducible case</p>
+            <strong>Assessment evidence reaches a typed proposal and stops at review before tracker mutation.</strong>
+            <span>The checked-in fixture, result JSON, and case study document the same boundary.</span>
           </section>
         </div>
       </div>
