@@ -28,6 +28,7 @@ function exportableState(state: CareerOSState): CareerOSState {
       message: account.message,
       updatedAt: account.updatedAt
     })),
+    gmailSync: state.gmailSync,
     auditEvents: state.auditEvents
   };
 }

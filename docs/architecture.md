@@ -233,7 +233,7 @@ Required invariants:
 | `ResumeEvaluation`                | Deterministic or Gemma-backed resume feedback, with blocked status for invalid / low-confidence model output      |
 | `ModelTrace`                      | Provider/model metadata + bounded diagnostics — **never** raw prompts or full source bodies                       |
 
-Workspace export/import uses `schemaVersion: 1`. Import validates the full
+Workspace export/import uses `schemaVersion: 2`. Import validates the full
 normalized state before writing through the repository, rejects unknown future
 versions, private paths, OAuth/token/provider-key fields, raw model output,
 raw inbox bodies, and secret-looking values, and does not echo rejected
@@ -252,14 +252,17 @@ Evidence remains bounded and relationship-oriented: helper queries group
 snippets by mailbox thread, application, company, role, recruiter, source
 label, and resume version for frontend thread-level evidence views.
 
-Readonly Gmail OAuth is part of the local demo path. Tokens live outside the
-workspace export under `.careeros-data/gmail-oauth.json`; sync requests Gmail
-metadata/snippets only and does not persist full message bodies. Sync is
-bounded, paginated, de-duplicates already imported message source labels, merges
-new messages into existing local threads, and writes compact audit/import-job
-metadata. Hosted-grade credential rotation/recovery is still required before
-expanding scopes, adding hosted BYOK providers, or treating the connector as
-production credential infrastructure.
+Readonly Gmail OAuth is part of the local demo path.
+Tokens live outside the workspace export under `.careeros-data/gmail-oauth.json` as versioned AES-256-GCM envelopes with key identifiers.
+Writes use a same-directory temporary file and atomic rename.
+The current key can recover a normal envelope, while an explicitly configured previous key can recover and rotate an older envelope.
+Corrupt envelopes and unavailable keys produce redacted reconnect states instead of silent token loss.
+
+`GmailSyncState` persists `disconnected`, `authorizing`, `catching_up`, `idle`, `degraded`, `reconnect_required`, and `paused` states.
+Each sync action processes one bounded page and atomically stores its next-page checkpoint with idempotently merged messages, threads, evidence, and review proposals.
+Retries suppress known source labels, pause preserves the checkpoint, and restart resumes from the same cursor.
+The state stores progress counters and diagnostic codes, not raw Gmail bodies or provider payloads.
+This local recovery boundary does not turn the connector into hosted credential infrastructure or authorize broader Gmail scopes.
 
 ## Future Load-Control Decisions
 
@@ -307,7 +310,10 @@ Top-level source layout:
 | `lib/agent-constraints.ts`     | Machine-readable handoff, guardrail, prompt, trace, and review-gate constraints                                              |
 | `lib/agent-contracts.ts`       | Product-facing agent prompting, memory, cost, can/cannot-do contracts                                                        |
 | `lib/connectors.ts`            | Optional Gmail connector state and local action orchestration                                                                |
-| `lib/gmail-local.ts`           | Local readonly Gmail OAuth, token-file boundary, bounded sync-to-import conversion                                           |
+| `lib/gmail-sync.ts`            | Persisted Gmail sync transitions, progress checkpoints, and redacted audit events                                             |
+| `lib/gmail-adapter.ts`         | Validated readonly Gmail response contract and fetch adapter                                                                 |
+| `lib/gmail-local.ts`           | Local readonly Gmail OAuth, token rotation/recovery, and bounded sync-to-import conversion                                    |
+| `lib/fake-gmail.ts`            | No-credential Gmail fixtures for pagination, duplicate, failure, and reconnect tests                                         |
 | `lib/model-analysis.ts`        | Bounded Ollama import analysis with schema validation and review-only output                                                 |
 | `lib/resume-model-analysis.ts` | Bounded Ollama resume analysis with strict JSON validation and blocked fallback                                              |
 | `lib/model-status.ts`          | Explicit Ollama disabled / unavailable / model-missing / ready status checks                                                 |

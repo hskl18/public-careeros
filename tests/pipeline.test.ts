@@ -1615,7 +1615,7 @@ describe("persistence abstraction", () => {
 
     expect(response.status).toBe(200);
     expect(body.imported).toBe(true);
-    expect(state.schemaVersion).toBe(1);
+    expect(state.schemaVersion).toBe(2);
     expect(state.importJobs[0]?.source).toBe("json");
     expect(state.auditEvents.some((event) => event.action === "workspace.imported" || event.action === "import.processed")).toBe(true);
     expect(state.applications.find((item) => item.company === "Round Trip Systems")?.resumeVersion).toBe(
@@ -1648,7 +1648,7 @@ describe("persistence abstraction", () => {
 
     expect(response.status).toBe(400);
     expect(body.code).toBe("schema_version_unsupported");
-    expect(state.schemaVersion).toBe(1);
+    expect(state.schemaVersion).toBe(2);
     expect(state.applications.map((item) => item.id)).toEqual(seed.applications.map((item) => item.id));
   });
 
@@ -2163,20 +2163,38 @@ describe("optional Gmail connector architecture", () => {
         }),
         { params: Promise.resolve({ action: "sync" }) }
       );
-      const result = await response.json();
+      const firstResult = await response.json();
+      const continuedResponse = await postGmailConnector(
+        new Request("http://localhost/api/connectors/gmail/sync", {
+          method: "POST",
+          headers: { accept: "application/json" }
+        }),
+        { params: Promise.resolve({ action: "sync" }) }
+      );
+      const result = await continuedResponse.json();
       const state = await readState();
       const gmailThread = state.mailboxThreads.find((thread) => thread.id === gmailLifecycleThreadId);
 
       expect(response.status).toBe(200);
+      expect(continuedResponse.status).toBe(200);
       expect(result.importJob.source).toBe("gmail");
-      expect(result.stats.pagesFetched).toBe(2);
+      expect(firstResult.status).toBe("catching_up");
+      expect(firstResult.stats.pagesFetched).toBe(1);
+      expect(firstResult.stats.importedRecords).toBe(0);
+      expect(firstResult.stats.duplicateRecords).toBe(1);
+      expect(result.status).toBe("idle");
+      expect(result.stats.pagesFetched).toBe(1);
       expect(result.stats.importedRecords).toBe(1);
-      expect(result.stats.duplicateRecords).toBe(1);
+      expect(result.stats.duplicateRecords).toBe(0);
+      expect(result.progress.pagesCompleted).toBe(2);
+      expect(result.progress.importedRecords).toBe(1);
+      expect(result.progress.duplicateRecords).toBe(1);
       expect(gmailThread?.messages.map((message) => message.id)).toContain("gmail_new");
       expect(gmailThread?.messages.filter((message) => message.id === "gmail_dup")).toHaveLength(1);
       expect(state.evidenceSnippets.filter((snippet) => snippet.sourceLabel === "gmail:gmail_new")).toHaveLength(1);
       expect(state.evidenceSnippets.filter((snippet) => snippet.sourceLabel === "gmail:gmail_dup")).toHaveLength(0);
-      expect(state.auditEvents[0]?.action).toBe("gmail.sync");
+      expect(state.gmailSync.status).toBe("idle");
+      expect(state.auditEvents[0]?.action).toBe("gmail.sync_state.idle");
       expect(JSON.stringify(state.auditEvents[0])).not.toMatch(/access-token|refresh-token|raw|secret/i);
     } finally {
       globalThis.fetch = originalFetch;

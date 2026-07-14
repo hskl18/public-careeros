@@ -25,6 +25,7 @@ Other Candidate API.
 | GET    | [`/api/connectors`](#get-apiconnectors)                             | Connector account status                                                |
 | POST   | [`/api/connectors/gmail/{action}`](#post-apiconnectorsgmailaction)  | Gmail OAuth/sync action                                                 |
 | GET    | [`/api/connectors/gmail/callback`](#get-apiconnectorsgmailcallback) | Gmail OAuth callback redirect                                           |
+| GET    | [`/api/version`](#get-apiversion)                                   | Server-owned package version                                            |
 | POST   | [`/api/notifications/{id}`](#post-apinotificationsid)               | Mark notification read/dismissed                                        |
 | POST   | [`/api/local-data/delete`](#post-apilocal-datadelete)               | Delete default local data after confirmation                            |
 | GET    | [`/api/debug/state`](#get-apidebugstate)                            | Development-only full local state snapshot                              |
@@ -208,7 +209,7 @@ JSON API clients can send:
 {
   "confirm": "IMPORT LOCAL DATA",
   "state": {
-    "schemaVersion": 1
+    "schemaVersion": 2
   }
 }
 ```
@@ -429,6 +430,7 @@ Returns optional connector account status.
 ### Behavior
 
 - Gmail is disabled by default.
+- The response includes the persisted Gmail sync state and bounded progress counters.
 - Local console, import, resume, review, and notification workflows are
   unaffected when Gmail is disabled or not configured.
 - Also returns `gmailOAuth`, a secret-free setup diagnostic with the exact
@@ -444,6 +446,7 @@ Runs a Gmail connector action for the local readonly demo.
 - `connect`
 - `disconnect`
 - `sync`
+- `pause`
 
 ### Behavior
 
@@ -452,12 +455,12 @@ Runs a Gmail connector action for the local readonly demo.
 - `connect` returns `needs_attention` instead of redirecting to Google when the
   local callback URL is malformed or points at another local origin/port.
 - `disconnect` removes the local `.careeros-data/gmail-oauth.json` token file.
-- `sync` fetches recent Gmail readonly message metadata/snippets matching the
-  recruiting query, stores bounded snippets, and sends them through the local
-  import/model/review pipeline.
-- `sync` paginates within a small local bound, de-duplicates already imported
-  Gmail source labels, merges new messages into existing local threads, and
-  records a local audit event plus a Gmail-sourced import job.
+- `sync` processes one bounded Gmail metadata and snippet page per request.
+- The next-page cursor and progress counters are persisted atomically with imported state.
+- Repeated pages suppress duplicate message IDs and source labels across prior local imports.
+- New messages merge idempotently into existing local threads before review-gated pipeline processing.
+- `pause` preserves the cursor so a later `sync` continues from the same checkpoint, including after process restart.
+- Rate limits, malformed responses, provider outages, and token recovery failures become typed redacted states.
 - `sync` does not request or persist full Gmail message bodies.
 - Returns JSON when the request accepts `application/json`; otherwise redirects
   to `/settings`.
@@ -477,6 +480,15 @@ Handles the local Gmail OAuth redirect for the optional readonly connector.
   `connected`, `oauth_denied`, `oauth_state_invalid`, `missing_code`, or
   `exchange_failed`.
 - Does not echo provider raw errors, OAuth tokens, or Google response bodies.
+
+## `GET /api/version`
+
+Returns the server-owned package name and version from `package.json`.
+
+### Behavior
+
+- Returns `{ "name": "careeros", "version": "0.2.0" }`.
+- Sends `cache-control: no-store`.
 
 ## `POST /api/notifications/{id}`
 

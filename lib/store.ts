@@ -10,7 +10,7 @@ import { createEmptyCandidateContext, createEmptyState } from "./seed";
 import type { CareerOSState } from "./types";
 import type { StateRepository } from "./persistence";
 
-export const currentWorkspaceSchemaVersion = 1;
+export const currentWorkspaceSchemaVersion = 2;
 
 let writeLock = Promise.resolve();
 let repository: StateRepository = createDefaultStateRepository();
@@ -33,6 +33,10 @@ function normalizeState(state: CareerOSState): CareerOSState {
     },
     agentRuns: state.agentRuns ?? [],
     auditEvents: state.auditEvents ?? [],
+    gmailSync: state.gmailSync ?? {
+      status: "disconnected",
+      updatedAt: new Date().toISOString()
+    },
     modelRuntime: state.modelRuntime ?? {
       provider: "ollama",
       enabled: process.env.CAREEROS_OLLAMA_ENABLED === "true",

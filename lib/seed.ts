@@ -104,6 +104,10 @@ export function createEmptyState(): CareerOSState {
     modelTraces: [],
     importJobs: [],
     connectorAccounts: [],
+    gmailSync: {
+      status: "disconnected",
+      updatedAt: createdAt
+    },
     auditEvents: []
   };
 }
@@ -321,6 +325,10 @@ export function createSeedState(): CareerOSState {
         updatedAt: nowIso()
       }
     ],
+    gmailSync: {
+      status: "disconnected",
+      updatedAt: createdAt
+    },
     auditEvents: [
       {
         id: stableId("audit", ["seed", "workspace"]),

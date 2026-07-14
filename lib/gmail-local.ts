@@ -1,8 +1,9 @@
-import { mkdir, readFile, rm, writeFile } from "fs/promises";
-import path from "path";
 import { Buffer } from "buffer";
-import { createCipheriv, createDecipheriv, createHash, randomBytes } from "crypto";
-import { hashText, nowIso, stableId } from "./id";
+import { createCipheriv, createDecipheriv, createHash, randomBytes, randomUUID } from "crypto";
+import { mkdir, readFile, rename, rm, writeFile } from "fs/promises";
+import path from "path";
+import { FetchGmailAdapter, GmailAdapterError, type GmailAdapter, type GmailMessageResponse } from "./gmail-adapter";
+import { nowIso, stableId } from "./id";
 import { defaultRuntimeDataDir } from "./persistence";
 import type { ConnectorAccount, LocalImportRecord, MailboxThread } from "./types";
 
@@ -14,7 +15,7 @@ interface GmailTokenFile {
   token_type?: string;
 }
 
-interface GmailTokenEnvelope {
+interface GmailTokenEnvelopeV1 {
   version: 1;
   type: "careeros.gmail.oauth";
   algorithm: "aes-256-gcm";
@@ -24,20 +25,31 @@ interface GmailTokenEnvelope {
   ciphertext: string;
 }
 
-interface GmailListResponse {
-  messages?: Array<{ id: string; threadId: string }>;
-  nextPageToken?: string;
-  resultSizeEstimate?: number;
+interface GmailTokenEnvelopeV2 {
+  version: 2;
+  type: "careeros.gmail.oauth";
+  algorithm: "aes-256-gcm";
+  keyId: string;
+  iv: string;
+  tag: string;
+  ciphertext: string;
 }
 
-interface GmailMessageResponse {
-  id: string;
-  threadId: string;
-  snippet?: string;
-  internalDate?: string;
-  payload?: {
-    headers?: Array<{ name?: string; value?: string }>;
-  };
+type GmailTokenEnvelope = GmailTokenEnvelopeV1 | GmailTokenEnvelopeV2;
+type GmailFailureCode =
+  | "rate_limited"
+  | "provider_unavailable"
+  | "malformed_response"
+  | "reconnect_required"
+  | "token_corrupt"
+  | "token_key_missing"
+  | "token_expired";
+
+export class GmailLocalError extends Error {
+  constructor(readonly code: GmailFailureCode) {
+    super(`Gmail operation could not complete: ${code}.`);
+    this.name = "GmailLocalError";
+  }
 }
 
 export interface GmailSyncResult {
@@ -50,7 +62,16 @@ export interface GmailSyncResult {
     fetchedMessages: number;
     resultSizeEstimate?: number;
     hasMore: boolean;
+    nextPageToken?: string;
   };
+}
+
+export interface GmailSyncOptions {
+  limit?: number;
+  pageToken?: string;
+  maxPages?: number;
+  adapter?: GmailAdapter;
+  accessToken?: string;
 }
 
 export interface GmailOAuthSetupDiagnostic {
@@ -67,13 +88,18 @@ export interface GmailOAuthSetupDiagnostic {
   nextStep: string;
 }
 
+export interface GmailTokenDiagnostic {
+  status: "missing" | "ready" | "recovered" | "corrupt" | "key_missing";
+  keyId?: string;
+}
+
 export const gmailOAuthState = "careeros-local-gmail";
 
 function dataDir() {
   return defaultRuntimeDataDir();
 }
 
-function tokenPath() {
+export function gmailTokenPath() {
   return path.join(dataDir(), "gmail-oauth.json");
 }
 
@@ -89,61 +115,164 @@ function gmailClientSecret() {
   return process.env.CAREEROS_GMAIL_CLIENT_SECRET?.trim();
 }
 
-function tokenSecret() {
-  if (process.env.CAREEROS_TOKEN_SECRET?.trim()) {
-    return { value: process.env.CAREEROS_TOKEN_SECRET.trim(), source: "CAREEROS_TOKEN_SECRET" as const };
-  }
-  if (process.env.CAREEROS_SECRET_KEY?.trim()) {
-    return { value: process.env.CAREEROS_SECRET_KEY.trim(), source: "CAREEROS_SECRET_KEY" as const };
-  }
-  const clientSecret = gmailClientSecret();
-  return clientSecret ? { value: clientSecret, source: "CAREEROS_GMAIL_CLIENT_SECRET" as const } : undefined;
+function currentTokenSecret() {
+  if (process.env.CAREEROS_TOKEN_SECRET?.trim()) return process.env.CAREEROS_TOKEN_SECRET.trim();
+  if (process.env.CAREEROS_SECRET_KEY?.trim()) return process.env.CAREEROS_SECRET_KEY.trim();
+  return gmailClientSecret();
+}
+
+function currentTokenKey() {
+  const secret = currentTokenSecret();
+  if (!secret) return undefined;
+  return {
+    id: process.env.CAREEROS_TOKEN_KEY_ID?.trim() || "primary",
+    secret,
+    current: true
+  };
+}
+
+function previousTokenKey() {
+  const secret = process.env.CAREEROS_TOKEN_PREVIOUS_SECRET?.trim();
+  if (!secret) return undefined;
+  return {
+    id: process.env.CAREEROS_TOKEN_PREVIOUS_KEY_ID?.trim() || "previous",
+    secret,
+    current: false
+  };
+}
+
+function tokenKeys() {
+  return [currentTokenKey(), previousTokenKey()].filter(Boolean) as Array<{
+    id: string;
+    secret: string;
+    current: boolean;
+  }>;
 }
 
 function tokenKey(secret: string) {
   return createHash("sha256").update(secret).digest();
 }
 
+function tokenAad(keyId: string) {
+  return Buffer.from(`careeros.gmail.oauth:2:${keyId}`, "utf8");
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 function isTokenEnvelope(value: unknown): value is GmailTokenEnvelope {
-  const record = value as Partial<GmailTokenEnvelope>;
+  if (!isRecord(value)) return false;
   return (
-    Boolean(record) &&
-    record.version === 1 &&
-    record.type === "careeros.gmail.oauth" &&
-    record.algorithm === "aes-256-gcm" &&
-    typeof record.iv === "string" &&
-    typeof record.tag === "string" &&
-    typeof record.ciphertext === "string"
+    (value.version === 1 || value.version === 2) &&
+    value.type === "careeros.gmail.oauth" &&
+    value.algorithm === "aes-256-gcm" &&
+    typeof value.iv === "string" &&
+    typeof value.tag === "string" &&
+    typeof value.ciphertext === "string" &&
+    (value.version === 1 || typeof value.keyId === "string")
   );
 }
 
-function encryptTokenFile(token: GmailTokenFile): GmailTokenEnvelope {
-  const secret = tokenSecret();
-  if (!secret) throw new Error("Gmail token encryption requires CAREEROS_GMAIL_CLIENT_SECRET or CAREEROS_TOKEN_SECRET.");
+function isTokenFile(value: unknown): value is GmailTokenFile {
+  if (!isRecord(value)) return false;
+  return (
+    typeof value.access_token === "string" &&
+    value.access_token.length > 0 &&
+    typeof value.expires_at === "number" &&
+    (value.refresh_token === undefined || typeof value.refresh_token === "string")
+  );
+}
+
+function encryptTokenFile(token: GmailTokenFile): GmailTokenEnvelopeV2 {
+  const key = currentTokenKey();
+  if (!key) throw new GmailLocalError("token_key_missing");
   const iv = randomBytes(12);
-  const cipher = createCipheriv("aes-256-gcm", tokenKey(secret.value), iv);
+  const cipher = createCipheriv("aes-256-gcm", tokenKey(key.secret), iv);
+  cipher.setAAD(tokenAad(key.id));
   const ciphertext = Buffer.concat([cipher.update(JSON.stringify(token), "utf8"), cipher.final()]);
   return {
-    version: 1,
+    version: 2,
     type: "careeros.gmail.oauth",
     algorithm: "aes-256-gcm",
-    keySource: secret.source,
+    keyId: key.id,
     iv: iv.toString("base64url"),
     tag: cipher.getAuthTag().toString("base64url"),
     ciphertext: ciphertext.toString("base64url")
   };
 }
 
-function decryptTokenFile(envelope: GmailTokenEnvelope): GmailTokenFile {
-  const secret = tokenSecret();
-  if (!secret) throw new Error("Gmail token encryption key is missing.");
-  const decipher = createDecipheriv("aes-256-gcm", tokenKey(secret.value), Buffer.from(envelope.iv, "base64url"));
+function decryptWithKey(envelope: GmailTokenEnvelope, secret: string) {
+  const decipher = createDecipheriv("aes-256-gcm", tokenKey(secret), Buffer.from(envelope.iv, "base64url"));
+  if (envelope.version === 2) decipher.setAAD(tokenAad(envelope.keyId));
   decipher.setAuthTag(Buffer.from(envelope.tag, "base64url"));
   const plaintext = Buffer.concat([
     decipher.update(Buffer.from(envelope.ciphertext, "base64url")),
     decipher.final()
   ]).toString("utf8");
-  return JSON.parse(plaintext) as GmailTokenFile;
+  const token = JSON.parse(plaintext) as unknown;
+  if (!isTokenFile(token)) throw new GmailLocalError("token_corrupt");
+  return token;
+}
+
+async function writeTokenFile(token: GmailTokenFile) {
+  await mkdir(dataDir(), { recursive: true });
+  const destination = gmailTokenPath();
+  const temporary = `${destination}.${process.pid}.${randomUUID()}.tmp`;
+  try {
+    await writeFile(temporary, `${JSON.stringify(encryptTokenFile(token), null, 2)}\n`, { mode: 0o600 });
+    await rename(temporary, destination);
+  } catch (error) {
+    await rm(temporary, { force: true });
+    throw error;
+  }
+}
+
+async function readTokenFile(): Promise<{ token: GmailTokenFile; recovered: boolean; keyId: string }> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(await readFile(gmailTokenPath(), "utf8")) as unknown;
+  } catch (error) {
+    const code = isRecord(error) ? error.code : undefined;
+    if (code === "ENOENT") throw new GmailLocalError("reconnect_required");
+    throw new GmailLocalError("token_corrupt");
+  }
+  if (!isTokenEnvelope(parsed)) throw new GmailLocalError("token_corrupt");
+  const keys = tokenKeys();
+  if (!keys.length) throw new GmailLocalError("token_key_missing");
+  const candidates = parsed.version === 2 ? keys.filter((key) => key.id === parsed.keyId) : keys;
+  if (!candidates.length) throw new GmailLocalError("token_key_missing");
+
+  for (const key of candidates) {
+    try {
+      const token = decryptWithKey(parsed, key.secret);
+      const recovered = parsed.version === 1 || !key.current;
+      if (recovered) await writeTokenFile(token);
+      return { token, recovered, keyId: currentTokenKey()?.id ?? key.id };
+    } catch (error) {
+      if (error instanceof GmailLocalError) throw error;
+    }
+  }
+  throw new GmailLocalError("token_corrupt");
+}
+
+function fakeEndpoint(name: "CAREEROS_GMAIL_AUTH_URL" | "CAREEROS_GMAIL_TOKEN_URL", fallback: string) {
+  const candidate = process.env[name]?.trim();
+  if (!candidate) return fallback;
+  const url = new URL(candidate);
+  const fakeMode = process.env.CAREEROS_GMAIL_FAKE_MODE === "true";
+  if (!fakeMode || !["127.0.0.1", "localhost", "::1"].includes(url.hostname)) {
+    throw new Error("Custom Gmail OAuth endpoints require fake mode and a loopback URL.");
+  }
+  return url.toString();
+}
+
+function gmailAuthUrl() {
+  return fakeEndpoint("CAREEROS_GMAIL_AUTH_URL", "https://accounts.google.com/o/oauth2/v2/auth");
+}
+
+function gmailTokenUrl() {
+  return fakeEndpoint("CAREEROS_GMAIL_TOKEN_URL", "https://oauth2.googleapis.com/token");
 }
 
 export function gmailRedirectUri(requestUrl: string) {
@@ -172,7 +301,6 @@ export function gmailOAuthSetupDiagnostic(requestUrl: string): GmailOAuthSetupDi
   }
 
   const originMatchesRequest = Boolean(redirectOrigin && redirectOrigin === requestedOrigin);
-
   if (!enabled) {
     return {
       enabled,
@@ -188,7 +316,6 @@ export function gmailOAuthSetupDiagnostic(requestUrl: string): GmailOAuthSetupDi
       nextStep: "Set CAREEROS_GMAIL_CONNECTOR_ENABLED=true only when you want the optional readonly Gmail connector."
     };
   }
-
   if (!clientIdConfigured || !clientSecretConfigured) {
     return {
       enabled,
@@ -204,7 +331,6 @@ export function gmailOAuthSetupDiagnostic(requestUrl: string): GmailOAuthSetupDi
       nextStep: "Add CAREEROS_GMAIL_CLIENT_ID and CAREEROS_GMAIL_CLIENT_SECRET to .env.local, then restart the dev server."
     };
   }
-
   if (!redirectUriValid || !originMatchesRequest) {
     return {
       enabled,
@@ -221,7 +347,6 @@ export function gmailOAuthSetupDiagnostic(requestUrl: string): GmailOAuthSetupDi
         "Set CAREEROS_GMAIL_REDIRECT_URI to this app origin and paste that exact callback URL into Google OAuth Authorized redirect URIs."
     };
   }
-
   return {
     enabled,
     clientIdConfigured,
@@ -239,7 +364,7 @@ export function gmailOAuthSetupDiagnostic(requestUrl: string): GmailOAuthSetupDi
 
 export function gmailConnectUrl(requestUrl: string) {
   if (!gmailIsConfigured()) return undefined;
-  const url = new URL("https://accounts.google.com/o/oauth2/v2/auth");
+  const url = new URL(gmailAuthUrl());
   url.searchParams.set("client_id", gmailClientId()!);
   url.searchParams.set("redirect_uri", gmailRedirectUri(requestUrl));
   url.searchParams.set("response_type", "code");
@@ -250,26 +375,26 @@ export function gmailConnectUrl(requestUrl: string) {
   return url.toString();
 }
 
-async function readTokenFile() {
+export async function gmailTokenDiagnostic(): Promise<GmailTokenDiagnostic> {
   try {
-    const parsed = JSON.parse(await readFile(tokenPath(), "utf8")) as unknown;
-    return isTokenEnvelope(parsed) ? decryptTokenFile(parsed) : (parsed as GmailTokenFile);
-  } catch {
-    return undefined;
+    const result = await readTokenFile();
+    return { status: result.recovered ? "recovered" : "ready", keyId: result.keyId };
+  } catch (error) {
+    if (error instanceof GmailLocalError) {
+      if (error.code === "reconnect_required") return { status: "missing" };
+      if (error.code === "token_key_missing") return { status: "key_missing" };
+    }
+    return { status: "corrupt" };
   }
 }
 
-async function writeTokenFile(token: GmailTokenFile) {
-  await mkdir(dataDir(), { recursive: true });
-  await writeFile(tokenPath(), JSON.stringify(encryptTokenFile(token), null, 2), { mode: 0o600 });
-}
-
 export async function deleteGmailToken() {
-  await rm(tokenPath(), { force: true });
+  await rm(gmailTokenPath(), { force: true });
 }
 
 export async function hasGmailToken() {
-  return Boolean(await readTokenFile());
+  const diagnostic = await gmailTokenDiagnostic();
+  return diagnostic.status === "ready" || diagnostic.status === "recovered";
 }
 
 function tokenAccount(status: ConnectorAccount["status"], message: string): ConnectorAccount {
@@ -290,15 +415,27 @@ export async function gmailConnectorAccount(): Promise<ConnectorAccount> {
   if (!gmailClientId() || !gmailClientSecret()) {
     return tokenAccount("not_configured", "Gmail sync is enabled, but CAREEROS_GMAIL_CLIENT_ID and CAREEROS_GMAIL_CLIENT_SECRET are missing.");
   }
-  if (await hasGmailToken()) {
-    return tokenAccount("connected", "Gmail OAuth token is encrypted under .careeros-data and can sync recruiting mail.");
+  const diagnostic = await gmailTokenDiagnostic();
+  if (diagnostic.status === "ready" || diagnostic.status === "recovered") {
+    return tokenAccount(
+      "connected",
+      diagnostic.status === "recovered"
+        ? "Gmail token was recovered with the previous key and rotated to the current key."
+        : "Gmail token envelope is ready for readonly sync."
+    );
+  }
+  if (diagnostic.status === "corrupt") {
+    return tokenAccount("needs_attention", "Gmail token recovery failed because the local envelope is corrupt. Reconnect Gmail.");
+  }
+  if (diagnostic.status === "key_missing") {
+    return tokenAccount("needs_attention", "Gmail token recovery failed because its encryption key is unavailable. Restore the previous key or reconnect Gmail.");
   }
   return tokenAccount("disconnected", "Gmail OAuth is configured. Connect once, then sync recent recruiting mail into the local pipeline.");
 }
 
 export async function exchangeGmailCode(code: string, requestUrl: string) {
   if (!gmailIsConfigured()) throw new Error("Gmail connector is not configured.");
-  const response = await fetch("https://oauth2.googleapis.com/token", {
+  const response = await fetch(gmailTokenUrl(), {
     method: "POST",
     headers: { "content-type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
@@ -309,8 +446,15 @@ export async function exchangeGmailCode(code: string, requestUrl: string) {
       grant_type: "authorization_code"
     })
   });
-  if (!response.ok) throw new Error(`Google OAuth token exchange failed with HTTP ${response.status}.`);
-  const body = (await response.json()) as { access_token: string; refresh_token?: string; expires_in?: number; scope?: string; token_type?: string };
+  if (!response.ok) throw new GmailLocalError("reconnect_required");
+  const body = (await response.json()) as {
+    access_token?: string;
+    refresh_token?: string;
+    expires_in?: number;
+    scope?: string;
+    token_type?: string;
+  };
+  if (!body.access_token) throw new GmailLocalError("malformed_response");
   await writeTokenFile({
     access_token: body.access_token,
     refresh_token: body.refresh_token,
@@ -321,11 +465,10 @@ export async function exchangeGmailCode(code: string, requestUrl: string) {
 }
 
 async function accessToken() {
-  const token = await readTokenFile();
-  if (!token) throw new Error("Gmail OAuth token is missing. Connect Gmail first.");
+  const { token } = await readTokenFile();
   if (token.expires_at > Date.now() + 60_000) return token.access_token;
-  if (!token.refresh_token) throw new Error("Gmail token is expired and no refresh token is available. Connect Gmail again.");
-  const response = await fetch("https://oauth2.googleapis.com/token", {
+  if (!token.refresh_token) throw new GmailLocalError("token_expired");
+  const response = await fetch(gmailTokenUrl(), {
     method: "POST",
     headers: { "content-type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
@@ -335,8 +478,9 @@ async function accessToken() {
       grant_type: "refresh_token"
     })
   });
-  if (!response.ok) throw new Error(`Google OAuth refresh failed with HTTP ${response.status}.`);
-  const body = (await response.json()) as { access_token: string; expires_in?: number; scope?: string; token_type?: string };
+  if (!response.ok) throw new GmailLocalError("token_expired");
+  const body = (await response.json()) as { access_token?: string; expires_in?: number; scope?: string; token_type?: string };
+  if (!body.access_token) throw new GmailLocalError("malformed_response");
   const next = {
     ...token,
     access_token: body.access_token,
@@ -372,7 +516,10 @@ function toImportRecord(message: GmailMessageResponse): LocalImportRecord {
   const from = header(message, "From") || "unknown sender";
   const date = header(message, "Date");
   const snippet = (message.snippet ?? "").slice(0, 500);
-  const text = [`Subject: ${subject}`, `From: ${from}`, date ? `Date: ${date}` : "", snippet].filter(Boolean).join("\n").slice(0, 1200);
+  const text = [`Subject: ${subject}`, `From: ${from}`, date ? `Date: ${date}` : "", snippet]
+    .filter(Boolean)
+    .join("\n")
+    .slice(0, 1200);
   return {
     company: inferCompany(subject, from),
     role: inferRole(subject, text),
@@ -385,24 +532,34 @@ function toImportRecord(message: GmailMessageResponse): LocalImportRecord {
   };
 }
 
-export async function syncGmailRecruitingMail(limit = 10): Promise<GmailSyncResult> {
-  const token = await accessToken();
-  const query = process.env.CAREEROS_GMAIL_QUERY?.trim() || 'newer_than:90d (recruiter OR application OR assessment OR interview OR "next steps" OR offer OR OA)';
-  const boundedLimit = Math.max(1, Math.min(limit, 50));
+export function gmailFailureCode(error: unknown): GmailFailureCode {
+  if (error instanceof GmailLocalError) return error.code;
+  if (error instanceof GmailAdapterError) return error.code;
+  return "provider_unavailable";
+}
+
+export async function syncGmailRecruitingMail(input: number | GmailSyncOptions = 10): Promise<GmailSyncResult> {
+  const options = typeof input === "number" ? { limit: input } : input;
+  const token = options.accessToken ?? (await accessToken());
+  const adapter = options.adapter ?? new FetchGmailAdapter();
+  const query =
+    process.env.CAREEROS_GMAIL_QUERY?.trim() ||
+    'newer_than:90d (recruiter OR application OR assessment OR interview OR "next steps" OR offer OR OA)';
+  const boundedLimit = Math.max(1, Math.min(options.limit ?? 10, 50));
+  const maxPages = Math.max(1, Math.min(options.maxPages ?? 5, 5));
   const listedMessages: Array<{ id: string; threadId: string }> = [];
   const seenMessageIds = new Set<string>();
-  let pageToken: string | undefined;
+  let pageToken = options.pageToken;
   let pagesFetched = 0;
   let resultSizeEstimate: number | undefined;
 
-  while (listedMessages.length < boundedLimit && pagesFetched < 5) {
-    const listUrl = new URL("https://gmail.googleapis.com/gmail/v1/users/me/messages");
-    listUrl.searchParams.set("maxResults", String(Math.min(25, boundedLimit - listedMessages.length)));
-    listUrl.searchParams.set("q", query);
-    if (pageToken) listUrl.searchParams.set("pageToken", pageToken);
-    const listResponse = await fetch(listUrl, { headers: { authorization: `Bearer ${token}` } });
-    if (!listResponse.ok) throw new Error(`Gmail message search failed with HTTP ${listResponse.status}.`);
-    const list = (await listResponse.json()) as GmailListResponse;
+  while (listedMessages.length < boundedLimit && pagesFetched < maxPages) {
+    const list = await adapter.listMessages({
+      accessToken: token,
+      query,
+      maxResults: Math.min(25, boundedLimit - listedMessages.length),
+      pageToken
+    });
     pagesFetched += 1;
     resultSizeEstimate = list.resultSizeEstimate ?? resultSizeEstimate;
     for (const message of list.messages ?? []) {
@@ -416,16 +573,7 @@ export async function syncGmailRecruitingMail(limit = 10): Promise<GmailSyncResu
   }
 
   const messages = await Promise.all(
-    listedMessages.map(async (item) => {
-      const url = new URL(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${item.id}`);
-      url.searchParams.set("format", "metadata");
-      url.searchParams.append("metadataHeaders", "Subject");
-      url.searchParams.append("metadataHeaders", "From");
-      url.searchParams.append("metadataHeaders", "Date");
-      const response = await fetch(url, { headers: { authorization: `Bearer ${token}` } });
-      if (!response.ok) throw new Error(`Gmail message fetch failed with HTTP ${response.status}.`);
-      return (await response.json()) as GmailMessageResponse;
-    })
+    listedMessages.map((item) => adapter.getMessage({ accessToken: token, messageId: item.id }))
   );
   const records = messages.map(toImportRecord);
   const threadsById = new Map<string, MailboxThread>();
@@ -444,12 +592,7 @@ export async function syncGmailRecruitingMail(limit = 10): Promise<GmailSyncResu
     };
     const existing = threadsById.get(threadId);
     if (existing) {
-      threadsById.set(threadId, {
-        ...existing,
-        messages: existing.messages.some((item) => item.id === mailboxMessage.id)
-          ? existing.messages
-          : [...existing.messages, mailboxMessage]
-      });
+      if (!existing.messages.some((item) => item.id === mailboxMessage.id)) existing.messages.push(mailboxMessage);
       return;
     }
     threadsById.set(threadId, {
@@ -462,20 +605,22 @@ export async function syncGmailRecruitingMail(limit = 10): Promise<GmailSyncResu
       createdAt: records[index].receivedAt ?? nowIso()
     });
   });
-  const threads = [...threadsById.values()];
   return {
     records,
-    threads,
+    threads: [...threadsById.values()],
     account: tokenAccount(
       "connected",
-      `Fetched ${records.length} recent recruiting message${records.length === 1 ? "" : "s"} from Gmail metadata/snippets.`
+      pageToken
+        ? `Imported a bounded Gmail page. More recruiting messages remain.`
+        : `Gmail backfill is up to date after ${records.length} bounded snippet${records.length === 1 ? "" : "s"}.`
     ),
     stats: {
       pagesFetched,
       listedMessages: listedMessages.length,
       fetchedMessages: messages.length,
       resultSizeEstimate,
-      hasMore: Boolean(pageToken)
+      hasMore: Boolean(pageToken),
+      nextPageToken: pageToken
     }
   };
 }

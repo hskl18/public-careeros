@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { headers } from "next/headers";
-import { gmailOAuthSetupDiagnostic } from "@/lib/gmail-local";
+import { gmailConnectorAccount, gmailOAuthSetupDiagnostic } from "@/lib/gmail-local";
 import { checkServerOllamaStatus, readServerState } from "@/lib/server-state";
 import { canDeleteLocalWorkspaceData, getStateRepositoryKind } from "@/lib/store";
 
@@ -26,8 +26,8 @@ function modelBadge(status: string) {
 }
 
 function connectorBadge(status?: string) {
-  if (status === "connected") return "badge ok";
-  if (status === "needs_attention") return "badge warn";
+  if (status === "connected" || status === "idle") return "badge ok";
+  if (status === "needs_attention" || status === "degraded" || status === "reconnect_required") return "badge warn";
   if (status === "disabled" || status === "not_configured") return "badge";
   return "badge info";
 }
@@ -96,9 +96,23 @@ export default async function SettingsPage({
   const activeSection = resolveSection(rawSection);
   const requestHeaders = await headers();
   const gmailSetup = gmailOAuthSetupDiagnostic(requestUrlFromHeaders(requestHeaders));
-  const [state, modelStatus] = await Promise.all([readServerState(), checkServerOllamaStatus()]);
-  const connector = state.connectorAccounts.find((item) => item.provider === "gmail");
-  const gmailConnected = connector?.status === "connected";
+  const [state, modelStatus, connector] = await Promise.all([
+    readServerState(),
+    checkServerOllamaStatus(),
+    gmailConnectorAccount()
+  ]);
+  const gmailSync = state.gmailSync;
+  const gmailProgress = gmailSync.progress;
+  const gmailRequiresReconnect = gmailSync.status === "reconnect_required";
+  const displayConnector = gmailRequiresReconnect
+    ? {
+        ...connector,
+        status: "needs_attention" as const,
+        label: "Gmail authorization rejected",
+        message: "The provider rejected this authorization. Reconnect Gmail to replace the local token envelope."
+      }
+    : connector;
+  const gmailConnected = connector?.status === "connected" && !gmailRequiresReconnect;
   const lastImport = state.importJobs[0];
   const latestTrace = state.modelTraces[0];
   const modelRuntime = state.modelRuntime;
@@ -142,10 +156,10 @@ export default async function SettingsPage({
           <strong>Deterministic mode</strong>
           <small>No Gmail, API key, hosted DB, or model download required.</small>
         </article>
-        <article className={setupTone(gmailConnected ? "ready" : "optional")}>
+        <article className={setupTone(gmailRequiresReconnect ? "attention" : gmailConnected ? "ready" : "optional")}>
           <span>Gmail</span>
-          <strong>{gmailConnected ? "Readonly sync connected" : "Optional connector"}</strong>
-          <small>{gmailConnected ? "Recruiting snippets can feed review-gated records." : "Use only when you want real inbox evidence."}</small>
+          <strong>{gmailRequiresReconnect ? "Reconnect required" : gmailConnected ? "Readonly sync connected" : "Optional connector"}</strong>
+          <small>{gmailRequiresReconnect ? "The saved authorization cannot continue." : gmailConnected ? "Recruiting snippets can feed review-gated records." : "Use only when you want real inbox evidence."}</small>
           <Link href="/settings?section=gmail">Configure</Link>
         </article>
         <article className={setupTone(modelStatus.status === "ready" ? "ready" : modelStatus.status === "disabled" ? "optional" : "attention")}>
@@ -351,13 +365,57 @@ export default async function SettingsPage({
               OAuth tokens are stored only under the local `.careeros-data` directory.
             </p>
           </div>
-          <span className={connectorBadge(connector?.status)}>{connector?.status ?? "not_configured"}</span>
+          <span className={connectorBadge(gmailSync.status)}>{gmailSync.status.replace("_", " ")}</span>
         </div>
+        <div className="state-matrix settings-status-grid gmail-sync-state-grid" aria-live="polite" aria-label="Gmail synchronization progress">
+          <div className="state-cell">
+            <span className="label">Sync state</span>
+            <strong>{gmailSync.status.replace("_", " ")}</strong>
+            <small>{gmailSync.diagnosticCode ? `Diagnostic: ${gmailSync.diagnosticCode.replaceAll("_", " ")}` : "No active failure diagnostic."}</small>
+          </div>
+          <div className="state-cell">
+            <span className="label">Pages checkpointed</span>
+            <strong>{gmailProgress?.pagesCompleted ?? 0}</strong>
+            <small>{gmailProgress?.hasMore ? "More bounded pages are available." : "No pending page is recorded."}</small>
+          </div>
+          <div className="state-cell">
+            <span className="label">Messages checked</span>
+            <strong>{gmailProgress?.messagesFetched ?? 0}</strong>
+            <small>Only bounded metadata and snippets are retained.</small>
+          </div>
+          <div className="state-cell">
+            <span className="label">Exactly-once merge</span>
+            <strong>{gmailProgress?.importedRecords ?? 0} imported</strong>
+            <small>{gmailProgress?.duplicateRecords ?? 0} duplicate records suppressed.</small>
+          </div>
+        </div>
+        {gmailProgress?.resultSizeEstimate ? (
+          <div className="connector-progress">
+            <label htmlFor="gmail-backfill-progress">
+              Backfill progress: {gmailProgress.messagesFetched} of about {gmailProgress.resultSizeEstimate} messages checked
+            </label>
+            <progress
+              id="gmail-backfill-progress"
+              max={gmailProgress.resultSizeEstimate}
+              value={Math.min(gmailProgress.messagesFetched, gmailProgress.resultSizeEstimate)}
+            />
+          </div>
+        ) : null}
+        {gmailSync.status === "degraded" || gmailSync.status === "reconnect_required" ? (
+          <div className="connector-diagnostic connector-diagnostic--warn" role="alert">
+            <strong>{gmailSync.status === "reconnect_required" ? "Reconnect Gmail to continue" : "Backfill checkpoint is safe"}</strong>
+            <p>
+              {gmailSync.status === "reconnect_required"
+                ? "The saved authorization could not continue. Reconnecting replaces only the local Gmail authorization."
+                : "Gmail stopped this window with a redacted diagnostic. Retry resumes from the persisted checkpoint."}
+            </p>
+          </div>
+        ) : null}
         <div className="connector-flow">
           <div className="tile">
             <span className="label">Current connector</span>
-            <strong>{connector?.label ?? "Gmail connector optional"}</strong>
-            <small>{connector?.message ?? "Connectors remain disabled until configured."}</small>
+            <strong>{displayConnector?.label ?? "Gmail connector optional"}</strong>
+            <small>{displayConnector?.message ?? "Connectors remain disabled until configured."}</small>
           </div>
           <div className="tile">
             <span className="label">Google callback URL</span>
@@ -376,15 +434,19 @@ export default async function SettingsPage({
           </div>
         </div>
         {gmailStatus ? (
-          <div className="connector-diagnostic connector-diagnostic--warn">
+          <div className={gmailStatus === "connected" ? "connector-diagnostic" : "connector-diagnostic connector-diagnostic--warn"}>
             <strong>
               {gmailStatus === "redirect_uri_mismatch_local"
                 ? "Gmail redirect URI needs attention"
+                : gmailStatus === "connected"
+                  ? "Gmail readonly authorization connected"
                 : "Gmail OAuth returned to settings"}
             </strong>
             <p>
               {gmailStatus === "redirect_uri_mismatch_local"
                 ? gmailSetup.nextStep
+                : gmailStatus === "connected"
+                  ? "The encrypted token envelope is ready. Start the first bounded sync window below."
                 : "The Gmail OAuth result was sanitized. Recheck the callback URL below, then retry when the Google client is configured."}
             </p>
           </div>
@@ -420,24 +482,33 @@ export default async function SettingsPage({
             passes them through the same mailbox triage, workflow extraction, Ollama Cloud/Gemma, and review-gate path.
           </p>
           <div className="actions">
-            <form action="/api/connectors/gmail/connect" method="post">
-              <button className="button primary" type="submit">
-                {connector?.status === "needs_attention" ? "Reconnect Gmail" : "Connect Gmail"}
-              </button>
-            </form>
-            {gmailConnected ? (
+            {!gmailConnected || gmailSync.status === "reconnect_required" ? (
+              <form action="/api/connectors/gmail/connect" method="post">
+                <button className="button primary" type="submit">
+                  {gmailSync.status === "reconnect_required" || displayConnector?.status === "needs_attention" ? "Reconnect Gmail" : "Connect Gmail"}
+                </button>
+              </form>
+            ) : null}
+            {gmailConnected && gmailSync.status !== "reconnect_required" ? (
               <>
                 <form action="/api/connectors/gmail/sync" method="post">
                   <button className="button primary" type="submit">
-                    Sync recruiting mail
+                    {gmailSync.status === "paused" || gmailSync.status === "degraded" || gmailProgress?.hasMore
+                      ? "Continue from checkpoint"
+                      : "Sync recruiting mail"}
                   </button>
                 </form>
-                <form action="/api/connectors/gmail/disconnect" method="post">
-                  <button className="button secondary" type="submit">
-                    Disconnect
-                  </button>
-                </form>
+                {gmailSync.status === "catching_up" && gmailProgress?.hasMore ? (
+                  <form action="/api/connectors/gmail/pause" method="post">
+                    <button className="button secondary" type="submit">Pause backfill</button>
+                  </form>
+                ) : null}
               </>
+            ) : null}
+            {gmailConnected || displayConnector?.status === "needs_attention" ? (
+              <form action="/api/connectors/gmail/disconnect" method="post">
+                <button className="button secondary" type="submit">Disconnect</button>
+              </form>
             ) : null}
           </div>
         </div>
