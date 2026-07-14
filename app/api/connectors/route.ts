@@ -7,6 +7,7 @@ export async function GET(request: Request) {
   const state = await readState();
   return NextResponse.json({
     connectors: await listConnectorAccountsAsync(state),
+    gmailSync: state.gmailSync,
     gmailOAuth: gmailOAuthSetupDiagnostic(request.url)
   });
 }

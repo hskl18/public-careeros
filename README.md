@@ -218,17 +218,21 @@ redirect URI**. `localhost`, `127.0.0.1`, port, and path must be identical.
 Then click **Connect Gmail**, finish Google OAuth, and click **Sync recruiting
 mail**.
 
-Token boundary: the Gmail token is stored as an AES-GCM envelope at
-`.careeros-data/gmail-oauth.json`, using `CAREEROS_TOKEN_SECRET`,
-`CAREEROS_SECRET_KEY`, or the configured Gmail client secret as key material.
-Sync requests readonly Gmail metadata/snippets and converts those bounded
-snippets into import records; full Gmail bodies are not persisted. Sync uses
-small bounded pagination, suppresses already imported message source labels,
-merges new messages into local threads, and writes compact local audit events.
-That directory is gitignored. The OAuth callback validates local state and only
-returns sanitized settings-page statuses; provider raw errors are not shown. Do
-not commit real `.env.local`, Gmail data, screenshots with private email, or
-local state.
+Token boundary: the Gmail token is stored as a version 2 AES-GCM envelope at `.careeros-data/gmail-oauth.json`.
+The envelope includes a key identifier but never stores key material or token plaintext.
+Set `CAREEROS_TOKEN_KEY_ID` with `CAREEROS_TOKEN_SECRET` for an explicit current key.
+During rotation, set `CAREEROS_TOKEN_PREVIOUS_KEY_ID` and `CAREEROS_TOKEN_PREVIOUS_SECRET` long enough for CareerOS to recover and atomically rewrite the envelope with the current key.
+If neither key can recover the envelope, Settings shows `reconnect required` without exposing provider or token details.
+
+Sync requests readonly Gmail metadata and bounded snippets, then converts them into import records without persisting full Gmail bodies.
+Each request processes one bounded page, atomically checkpoints the next cursor with imported state, and can be paused or resumed after restart.
+Message and thread merges are idempotent, so retrying a page suppresses duplicate evidence and review mutations.
+The OAuth callback and sync state machine write compact audit events with redacted diagnostic codes only.
+The local data directory is gitignored.
+Do not commit real `.env.local`, Gmail data, screenshots with private email, or local state.
+
+For the credential-free connector suite, run `pnpm build && pnpm e2e:gmail`.
+The suite starts a loopback fake Gmail service and covers authorization, pagination, duplicate messages, thread updates, pause and restart recovery, rate limiting, reconnect, review decisions, export, delete, keyboard navigation, and mobile layout.
 
 ## Routes
 
@@ -245,6 +249,7 @@ local state.
 | `/settings` | Ollama Cloud/Gemma, Gmail, local data, imports |
 | `/api/pipeline` | Inspectable multi-agent pipeline JSON |
 | `/api/providers` | Implemented/roadmap model provider metadata |
+| `/api/version` | Server-owned package name and version diagnostics |
 | Metrics API | Local effort metrics for future reporting surfaces |
 
 ## Repo Structure

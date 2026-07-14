@@ -1,6 +1,6 @@
 {
   "name": "careeros",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "CareerOS public hackathon demo: a Gemma-powered recruiting inbox pipeline with optional Gmail sync and review gates.",
   "keywords": [
     "careeros",
@@ -35,9 +35,10 @@
     "eval:generate": "node tools/generate-pipeline-fixtures.mjs",
     "eval:pipeline": "tsx tools/run-pipeline-eval.ts",
     "smoke:browser": "tsx tools/run-browser-smoke.ts",
+    "e2e:gmail": "tsx tools/run-gmail-e2e.ts",
     "smoke:ollama": "tsx tools/run-ollama-cloud-smoke.ts",
     "ci": "pnpm check && pnpm test && pnpm build",
-    "ci:public": "bash scripts/public-safety-check.sh && pnpm check && pnpm test && pnpm eval:generate && pnpm eval:pipeline && pnpm build && pnpm smoke:browser && git diff --check",
+    "ci:public": "bash scripts/public-safety-check.sh && pnpm check && pnpm test && pnpm eval:generate && pnpm eval:pipeline && pnpm build && pnpm smoke:browser && pnpm e2e:gmail && git diff --check",
     "release:check": "pnpm ci:public && pnpm smoke:ollama"
   },
   "dependencies": {

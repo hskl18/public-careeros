@@ -9,10 +9,10 @@ OAuth tokens, deployment secrets, database exports, or local workspace artifacts
 - The default workspace must work without hosted provider credentials.
 - Gmail is optional and disabled by default. The local demo supports readonly
   Gmail OAuth only after the user configures local Google credentials.
-- Gmail OAuth tokens must stay in the local `.careeros-data/gmail-oauth.json`
-  file as an AES-GCM envelope. They must never be included in workspace
-  export/import, fixtures, screenshots, docs, commits, or generated release
-  artifacts.
+- Gmail OAuth tokens must stay in the local `.careeros-data/gmail-oauth.json` file as a versioned AES-GCM envelope.
+- Token envelopes include a key identifier, use atomic replacement, and may be recovered with one explicitly configured previous key during rotation.
+- Corruption, missing keys, expired refresh credentials, and provider authorization failures must produce redacted reconnect diagnostics.
+- OAuth tokens must never be included in workspace export/import, fixtures, screenshots, docs, commits, or generated release artifacts.
 - Gmail OAuth callback handling validates local state and redirects with
   sanitized statuses only. Provider raw errors and token responses must not be
   echoed into the UI or logs intended for public sharing.

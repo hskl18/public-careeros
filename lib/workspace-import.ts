@@ -46,6 +46,7 @@ const stateKeys = [
   "modelTraces",
   "importJobs",
   "connectorAccounts",
+  "gmailSync",
   "auditEvents"
 ] as const;
 
@@ -59,6 +60,27 @@ const sourceTypes = ["application", "review", "reminder", "resume", "settings", 
 const importSources = ["seed", "json", "manual", "gmail"] as const;
 const importStatuses = ["pending", "processed", "failed"] as const;
 const connectorStatuses = ["disabled", "not_configured", "disconnected", "connected", "needs_attention"] as const;
+const gmailSyncStatuses = [
+  "disconnected",
+  "authorizing",
+  "catching_up",
+  "idle",
+  "degraded",
+  "reconnect_required",
+  "paused"
+] as const;
+const gmailDiagnosticCodes = [
+  "authorization_pending",
+  "interrupted",
+  "rate_limited",
+  "provider_unavailable",
+  "malformed_response",
+  "reconnect_required",
+  "token_corrupt",
+  "token_key_missing",
+  "token_expired",
+  "oauth_denied"
+] as const;
 const providerStatuses = ["disabled", "unavailable", "reachable", "model_missing", "health_check_failed", "ready"] as const;
 const agentNames = [
   "mailbox_triage",
@@ -705,6 +727,46 @@ function validateAgentRun(value: unknown, path: string) {
   };
 }
 
+function validateGmailSyncProgress(value: unknown, path: string) {
+  const record = validateObject(
+    value,
+    [
+      "windowStartedAt",
+      "checkpointPageToken",
+      "pagesCompleted",
+      "messagesListed",
+      "messagesFetched",
+      "importedRecords",
+      "duplicateRecords",
+      "resultSizeEstimate",
+      "hasMore"
+    ],
+    path
+  );
+  return {
+    windowStartedAt: requiredString(record, "windowStartedAt", path),
+    checkpointPageToken: optionalString(record, "checkpointPageToken", path, 500),
+    pagesCompleted: requiredNumber(record, "pagesCompleted", path, 0, 100_000),
+    messagesListed: requiredNumber(record, "messagesListed", path, 0, 1_000_000),
+    messagesFetched: requiredNumber(record, "messagesFetched", path, 0, 1_000_000),
+    importedRecords: requiredNumber(record, "importedRecords", path, 0, 1_000_000),
+    duplicateRecords: requiredNumber(record, "duplicateRecords", path, 0, 1_000_000),
+    resultSizeEstimate: optionalNumber(record, "resultSizeEstimate", path, 0, 1_000_000),
+    hasMore: requiredBoolean(record, "hasMore", path)
+  };
+}
+
+function validateGmailSync(value: unknown, path: string) {
+  const record = validateObject(value, ["status", "progress", "diagnosticCode", "lastSuccessfulAt", "updatedAt"], path);
+  return {
+    status: enumValue(record, "status", path, gmailSyncStatuses),
+    progress: record.progress === undefined ? undefined : validateGmailSyncProgress(record.progress, `${path}.progress`),
+    diagnosticCode: optionalEnumValue(record, "diagnosticCode", path, gmailDiagnosticCodes),
+    lastSuccessfulAt: optionalString(record, "lastSuccessfulAt", path),
+    updatedAt: requiredString(record, "updatedAt", path)
+  };
+}
+
 function validateStateShape(value: unknown): CareerOSState {
   const record = validateObject(value, stateKeys, "state");
   const version = record.schemaVersion === undefined ? currentWorkspaceSchemaVersion : record.schemaVersion;
@@ -736,6 +798,10 @@ function validateStateShape(value: unknown): CareerOSState {
     modelTraces: arrayOf(record, "modelTraces", "state", 20_000, validateModelTrace),
     importJobs: arrayOf(record, "importJobs", "state", 10_000, validateImportJob),
     connectorAccounts: arrayOf(record, "connectorAccounts", "state", 100, validateConnectorAccount),
+    gmailSync:
+      record.gmailSync === undefined
+        ? { status: "disconnected", updatedAt: nowIso() }
+        : validateGmailSync(record.gmailSync, "state.gmailSync"),
     auditEvents:
       record.auditEvents === undefined ? [] : arrayOf(record, "auditEvents", "state", 5_000, validateAuditEvent)
   };

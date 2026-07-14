@@ -1,5 +1,13 @@
 # CareerOS Public Release Summary
 
+## v0.2.0 deep-dive upgrade
+
+CareerOS v0.2.0 hardens the optional local Gmail workflow without requiring real credentials.
+The connector now uses an explicit persisted sync state machine, one-page backfill checkpoints, pause and restart recovery, idempotent message and thread merges, duplicate suppression, and visible progress.
+The token file is a version 2 AES-256-GCM envelope with a key identifier, atomic writes, previous-key recovery, automatic rotation, corruption detection, and an explicit reconnect path.
+A loopback fake Gmail service and browser suite cover authorization, pagination, duplicate messages, thread updates, partial metadata, rate limits, reconnect flows, review decisions, local export and delete, desktop and mobile layouts, keyboard navigation, and browser console errors.
+These checks do not use or claim evidence from a real Gmail account.
+
 This is the current public release summary for the lightweight CareerOS repo.
 It records the judge-facing demo boundary, runtime contract, security
 hardening, proof artifacts, and validation status for the Kaggle Gemma 4 Good
@@ -255,7 +263,7 @@ pnpm smoke:ollama
 git diff --check
 ```
 
-Current unit coverage after adding evaluation-artifact checks: `88/88` tests passing.
+Current unit coverage after adding Gmail recovery and version diagnostics: `95/95` tests passing.
 Current pipeline eval: `118/130` deterministic fixtures passing with the configured safety gate satisfied.
 
 `pnpm smoke:browser` passes and covers seeded plus clean workspace
